@@ -8,24 +8,38 @@ public sealed class GitService(CommandRunner commandRunner)
     public async Task CheckoutAndPullAsync(ProjectConfig project, CancellationToken cancellationToken = default)
     {
         EnsureRepoExists(project);
+
+        // Fresh repos (no commits yet) have no branches — checkout and pull are skipped gracefully
+        var hasCommits = await HasCommitsAsync(project, cancellationToken);
+        if (!hasCommits)
+        {
+            return;
+        }
+
         await RunGitOrThrowAsync(project, ["checkout", project.Branch], cancellationToken);
 
-        // Pull is best-effort — fresh repos or repos without remotes should not block the run
+        // Pull is best-effort — repos without remotes should not block the run
         await RunGitOrThrowAsync(project, ["pull", "--ff-only"], cancellationToken, allowFailure: true);
+    }
+
+    private async Task<bool> HasCommitsAsync(ProjectConfig project, CancellationToken cancellationToken)
+    {
+        var result = await RunGitOrThrowAsync(project, ["rev-parse", "--verify", "HEAD"], cancellationToken, allowFailure: true);
+        return result.ExitCode == 0;
     }
 
     public async Task<string> GetCurrentCommitAsync(ProjectConfig project, CancellationToken cancellationToken = default)
     {
         EnsureRepoExists(project);
-        var result = await RunGitOrThrowAsync(project, ["rev-parse", "HEAD"], cancellationToken);
-        return result.StandardOutput.Trim();
+        var result = await RunGitOrThrowAsync(project, ["rev-parse", "HEAD"], cancellationToken, allowFailure: true);
+        return result.ExitCode == 0 ? result.StandardOutput.Trim() : string.Empty;
     }
 
     public async Task<string> GetLogAsync(ProjectConfig project, CancellationToken cancellationToken = default)
     {
         EnsureRepoExists(project);
-        var result = await RunGitOrThrowAsync(project, ["log", "--oneline", "-5"], cancellationToken);
-        return result.StandardOutput;
+        var result = await RunGitOrThrowAsync(project, ["log", "--oneline", "-5"], cancellationToken, allowFailure: true);
+        return result.ExitCode == 0 ? result.StandardOutput : string.Empty;
     }
 
     public async Task<string> GetStatusAsync(ProjectConfig project, CancellationToken cancellationToken = default)
@@ -44,19 +58,27 @@ public sealed class GitService(CommandRunner commandRunner)
     public async Task<string> GetDiffAsync(ProjectConfig project, CancellationToken cancellationToken = default)
     {
         EnsureRepoExists(project);
-        var tracked = await RunGitOrThrowAsync(project, ["diff", "--patch", "HEAD", "--"], cancellationToken);
-        var untrackedFiles = (await GetStatusAsync(project, cancellationToken))
+
+        var status = await GetStatusAsync(project, cancellationToken);
+        var untrackedFiles = status
             .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
             .Where(line => line.StartsWith("?? ", StringComparison.Ordinal))
             .Select(line => line[3..].Trim().Replace('\\', '/'))
             .ToArray();
 
-        if (untrackedFiles.Length == 0)
+        string trackedDiff = string.Empty;
+        if (await HasCommitsAsync(project, cancellationToken))
         {
-            return tracked.StandardOutput;
+            var tracked = await RunGitOrThrowAsync(project, ["diff", "--patch", "HEAD", "--"], cancellationToken);
+            trackedDiff = tracked.StandardOutput;
         }
 
-        return tracked.StandardOutput
+        if (untrackedFiles.Length == 0)
+        {
+            return trackedDiff;
+        }
+
+        return trackedDiff
             + Environment.NewLine
             + "Untracked files are not included in git diff output:"
             + Environment.NewLine

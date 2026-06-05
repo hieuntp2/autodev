@@ -13,8 +13,9 @@ public sealed class CodexRunner(CommandRunner commandRunner)
     {
         try
         {
+            var codexExe = OperatingSystem.IsWindows() ? "codex.cmd" : "codex";
             var result = await commandRunner.RunProcessAsync(
-                "codex",
+                codexExe,
                 ["exec", "--cd", project.RepoPath, "--ask-for-approval", "never", "--sandbox", "workspace-write", "-"],
                 project.RepoPath,
                 prompt,
