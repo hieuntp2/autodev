@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AutoDev.Cli/AutoDev.Cli.csproj" />
+    <Project Path="src/AutoDev.Codex/AutoDev.Codex.csproj" />
+    <Project Path="src/AutoDev.Core/AutoDev.Core.csproj" />
+    <Project Path="src/AutoDev.Git/AutoDev.Git.csproj" />
+    <Project Path="src/AutoDev.OpenAI/AutoDev.OpenAI.csproj" />
+    <Project Path="src/AutoDev.Verification/AutoDev.Verification.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AutoDev.Tests/AutoDev.Tests.csproj" />
+  </Folder>
+</Solution>

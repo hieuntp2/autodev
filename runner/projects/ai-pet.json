@@ -1,0 +1,49 @@
+{
+  "projectId": "ai-pet",
+  "displayName": "AI Pet Companion Android",
+  "repoPath": "D:\\Projects\\25. my-pet-2",
+  "branch": "ai/autonomous-30-days",
+  "projectType": "android",
+  "mainRequirementFile": "docs/product/vision.md",
+  "scopeFile": "docs/product/scope.md",
+  "roadmapFile": "docs/product/roadmap.md",
+  "backlogFile": "docs/active/backlog.md",
+  "statusFile": "docs/active/implementation-status.md",
+  "agentRulesFile": "AGENTS.md",
+  "buildCommands": [
+    ".\\gradlew.bat build"
+  ],
+  "testCommands": [
+    ".\\gradlew.bat test"
+  ],
+  "allowedWritePaths": [
+    "app/",
+    "brain/",
+    "memory/",
+    "perception/",
+    "ui-avatar/",
+    "docs/active/"
+  ],
+  "protectedPaths": [
+    "docs/product/vision.md",
+    "docs/product/scope.md",
+    ".env",
+    "local.properties",
+    "keystore/",
+    "secrets/"
+  ],
+  "schedule": {
+    "enabled": true,
+    "mode": "windows-task-scheduler",
+    "time": "01:00",
+    "timezone": "Asia/Ho_Chi_Minh"
+  },
+  "dailyGoal": "Improve the Android AI Pet Companion so the pet feels more alive through mood, memory, avatar reaction, perception, audio, and optional cloud AI.",
+  "maxTasksPerRun": 1,
+  "maxDiffLines": 800,
+  "allowRequirementProposal": true,
+  "allowRequirementDirectEdit": false,
+  "allowAutoCommit": true,
+  "allowAutoPush": false,
+  "commitOnlyIfBuildPasses": true
+}

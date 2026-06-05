@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoDev.Core\AutoDev.Core.csproj" />
+    <ProjectReference Include="..\AutoDev.Verification\AutoDev.Verification.csproj" />
+    <ProjectReference Include="..\AutoDev.Git\AutoDev.Git.csproj" />
+    <ProjectReference Include="..\AutoDev.OpenAI\AutoDev.OpenAI.csproj" />
+    <ProjectReference Include="..\AutoDev.Codex\AutoDev.Codex.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>autodev</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
