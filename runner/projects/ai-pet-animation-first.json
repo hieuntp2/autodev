@@ -2,7 +2,7 @@
   "projectId": "ai-pet-animation-first",
   "displayName": "AI Pet Animation First Android",
   "repoPath": "D:\\1. Project\\25. my-pet-2",
-  "branch": "ai/animation-first-rebuild",
+  "branch": "main",
   "projectType": "android",
 
   "mainRequirementFile": "docs/product/vision.md",

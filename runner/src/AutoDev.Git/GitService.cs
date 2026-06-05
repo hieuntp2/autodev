@@ -9,7 +9,9 @@ public sealed class GitService(CommandRunner commandRunner)
     {
         EnsureRepoExists(project);
         await RunGitOrThrowAsync(project, ["checkout", project.Branch], cancellationToken);
-        await RunGitOrThrowAsync(project, ["pull", "--ff-only"], cancellationToken);
+
+        // Pull is best-effort — fresh repos or repos without remotes should not block the run
+        await RunGitOrThrowAsync(project, ["pull", "--ff-only"], cancellationToken, allowFailure: true);
     }
 
     public async Task<string> GetCurrentCommitAsync(ProjectConfig project, CancellationToken cancellationToken = default)
