@@ -10,3 +10,4 @@ publish/
 # Scratch
 scratch_run.log
 *.user
+.vs/
