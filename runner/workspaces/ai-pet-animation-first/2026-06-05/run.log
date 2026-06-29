@@ -1,0 +1,126 @@
+[2026-06-05T22:38:34.8379053+07:00] Created daily workspace.
+[2026-06-05T22:38:35.7075351+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T22:38:35.7352593+07:00] System.InvalidOperationException: OPENAI_API_KEY is not set.
+   at AutoDev.OpenAI.OpenAIPlannerClient.CreatePlanAsync(PlannerRequest request, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.OpenAI\OpenAIPlannerClient.cs:line 17
+   at AutoDev.Cli.DailyRunOrchestrator.RunAsync(String projectId, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Cli\DailyRunOrchestrator.cs:line 105
+[2026-06-05T22:38:57.4754366+07:00] Created daily workspace.
+[2026-06-05T22:38:58.2732133+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T22:38:58.9573532+07:00] System.InvalidOperationException: OpenAI planner call failed with HTTP 401: {
+  "error": {
+    "message": "Incorrect API key provided: sk-proj-*********************************************************************************************************************************************************ZQAy. You can find your API key at https://platform.openai.com/account/api-keys.",
+    "type": "invalid_request_error",
+    "code": "invalid_api_key",
+    "param": null
+  },
+  "status": 401
+}
+   at AutoDev.OpenAI.OpenAIPlannerClient.CreatePlanAsync(PlannerRequest request, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.OpenAI\OpenAIPlannerClient.cs:line 46
+   at AutoDev.Cli.DailyRunOrchestrator.RunAsync(String projectId, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Cli\DailyRunOrchestrator.cs:line 105
+[2026-06-05T22:39:44.1992660+07:00] Created daily workspace.
+[2026-06-05T22:39:45.0727139+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T22:39:45.5368314+07:00] System.InvalidOperationException: OpenAI planner call failed with HTTP 401: {
+  "error": {
+    "message": "Incorrect API key provided: sk-proj-*********************************************************************************************************************************************************ZQAy. You can find your API key at https://platform.openai.com/account/api-keys.",
+    "type": "invalid_request_error",
+    "code": "invalid_api_key",
+    "param": null
+  },
+  "status": 401
+}
+   at AutoDev.OpenAI.OpenAIPlannerClient.CreatePlanAsync(PlannerRequest request, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.OpenAI\OpenAIPlannerClient.cs:line 46
+   at AutoDev.Cli.DailyRunOrchestrator.RunAsync(String projectId, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Cli\DailyRunOrchestrator.cs:line 105
+[2026-06-05T22:41:31.2175595+07:00] Created daily workspace.
+[2026-06-05T22:41:32.0918987+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T22:41:32.7444079+07:00] System.InvalidOperationException: OpenAI planner call failed with HTTP 401: {
+  "error": {
+    "message": "Incorrect API key provided: sk-proj-*********************************************************************************************************************************************************ZQAy. You can find your API key at https://platform.openai.com/account/api-keys.",
+    "type": "invalid_request_error",
+    "code": "invalid_api_key",
+    "param": null
+  },
+  "status": 401
+}
+   at AutoDev.OpenAI.OpenAIPlannerClient.CreatePlanAsync(PlannerRequest request, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.OpenAI\OpenAIPlannerClient.cs:line 46
+   at AutoDev.Cli.DailyRunOrchestrator.RunAsync(String projectId, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Cli\DailyRunOrchestrator.cs:line 105
+[2026-06-05T22:42:26.7669760+07:00] Created daily workspace.
+[2026-06-05T22:42:27.6183339+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T22:42:28.2814678+07:00] System.InvalidOperationException: OpenAI planner call failed with HTTP 401: {
+  "error": {
+    "message": "Incorrect API key provided: 11. You can find your API key at https://platform.openai.com/account/api-keys.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "invalid_api_key"
+  }
+}
+   at AutoDev.OpenAI.OpenAIPlannerClient.CreatePlanAsync(PlannerRequest request, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.OpenAI\OpenAIPlannerClient.cs:line 46
+   at AutoDev.Cli.DailyRunOrchestrator.RunAsync(String projectId, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Cli\DailyRunOrchestrator.cs:line 105
+[2026-06-05T22:43:02.2966184+07:00] Created daily workspace.
+[2026-06-05T22:43:03.1795063+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T22:43:03.1911920+07:00] System.InvalidOperationException: OPENAI_API_KEY is not set.
+   at AutoDev.OpenAI.OpenAIPlannerClient.CreatePlanAsync(PlannerRequest request, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.OpenAI\OpenAIPlannerClient.cs:line 17
+   at AutoDev.Cli.DailyRunOrchestrator.RunAsync(String projectId, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Cli\DailyRunOrchestrator.cs:line 105
+[2026-06-05T23:26:43.4275031+07:00] Created daily workspace.
+[2026-06-05T23:26:44.4447397+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T23:26:45.1819834+07:00] System.InvalidOperationException: OpenAI planner call failed with HTTP 401: {
+  "error": {
+    "message": "Incorrect API key provided: 11. You can find your API key at https://platform.openai.com/account/api-keys.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "invalid_api_key"
+  }
+}
+   at AutoDev.OpenAI.OpenAIPlannerClient.CreatePlanAsync(PlannerRequest request, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.OpenAI\OpenAIPlannerClient.cs:line 46
+   at AutoDev.Cli.DailyRunOrchestrator.RunAsync(String projectId, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Cli\DailyRunOrchestrator.cs:line 105
+[2026-06-05T23:27:12.2970172+07:00] Created daily workspace.
+[2026-06-05T23:27:13.1613142+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T23:27:13.8249596+07:00] System.InvalidOperationException: OpenAI planner call failed with HTTP 401: {
+  "error": {
+    "message": "Incorrect API key provided: sk-proj-*********************************************************************************************************************************************************ZQAy. You can find your API key at https://platform.openai.com/account/api-keys.",
+    "type": "invalid_request_error",
+    "code": "invalid_api_key",
+    "param": null
+  },
+  "status": 401
+}
+   at AutoDev.OpenAI.OpenAIPlannerClient.CreatePlanAsync(PlannerRequest request, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.OpenAI\OpenAIPlannerClient.cs:line 46
+   at AutoDev.Cli.DailyRunOrchestrator.RunAsync(String projectId, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Cli\DailyRunOrchestrator.cs:line 105
+[2026-06-05T23:27:35.7107334+07:00] Created daily workspace.
+[2026-06-05T23:27:36.5436987+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T23:27:37.0009227+07:00] System.InvalidOperationException: OpenAI planner call failed with HTTP 401: {
+  "error": {
+    "message": "Incorrect API key provided: sk-proj-*********************************************************************************************************************************************************ZQAy. You can find your API key at https://platform.openai.com/account/api-keys.",
+    "type": "invalid_request_error",
+    "code": "invalid_api_key",
+    "param": null
+  },
+  "status": 401
+}
+   at AutoDev.OpenAI.OpenAIPlannerClient.CreatePlanAsync(PlannerRequest request, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.OpenAI\OpenAIPlannerClient.cs:line 46
+   at AutoDev.Cli.DailyRunOrchestrator.RunAsync(String projectId, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Cli\DailyRunOrchestrator.cs:line 105
+[2026-06-05T23:27:57.1774462+07:00] Created daily workspace.
+[2026-06-05T23:27:58.0282766+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T23:27:58.4514373+07:00] System.InvalidOperationException: OpenAI planner call failed with HTTP 401: {
+  "error": {
+    "message": "Incorrect API key provided: sk-proj-*********************************************************************************************************************************************************ZQAy. You can find your API key at https://platform.openai.com/account/api-keys.",
+    "type": "invalid_request_error",
+    "code": "invalid_api_key",
+    "param": null
+  },
+  "status": 401
+}
+   at AutoDev.OpenAI.OpenAIPlannerClient.CreatePlanAsync(PlannerRequest request, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.OpenAI\OpenAIPlannerClient.cs:line 46
+   at AutoDev.Cli.DailyRunOrchestrator.RunAsync(String projectId, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Cli\DailyRunOrchestrator.cs:line 105
+[2026-06-05T23:29:31.0942345+07:00] Created daily workspace.
+[2026-06-05T23:29:31.9796360+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T23:29:44.5958252+07:00] System.InvalidOperationException: codex.cmd is not installed or not available in PATH.
+ ---> System.ComponentModel.Win32Exception (2): An error occurred trying to start process 'codex.cmd' with working directory 'D:\1. Project\17 my-pet-2'. The system cannot find the file specified.
+   at System.Diagnostics.Process.StartWithCreateProcess(ProcessStartInfo startInfo)
+   at AutoDev.Verification.CommandRunner.RunProcessAsync(String fileName, IReadOnlyList`1 arguments, String workingDirectory, String standardInput, String displayCommand, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Verification\CommandRunner.cs:line 65
+   --- End of inner exception stack trace ---
+   at AutoDev.Verification.CommandRunner.RunProcessAsync(String fileName, IReadOnlyList`1 arguments, String workingDirectory, String standardInput, String displayCommand, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Verification\CommandRunner.cs:line 69
+   at AutoDev.Codex.CodexRunner.RunAsync(ProjectConfig project, String workspacePath, String prompt, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Codex\CodexRunner.cs:line 17
+   at AutoDev.Cli.DailyRunOrchestrator.RunAsync(String projectId, CancellationToken cancellationToken) in D:\1. Project\0. autodev\runner\src\AutoDev.Cli\DailyRunOrchestrator.cs:line 118
+[2026-06-05T23:30:09.1571445+07:00] Created daily workspace.
+[2026-06-05T23:30:09.9888844+07:00] Selected task: TASK-001 — Select only one task per run.
+[2026-06-05T23:30:21.9115091+07:00] Codex exited with 2. Continuing to capture diff and verification.
+[2026-06-05T23:30:22.1451201+07:00] Run completed.

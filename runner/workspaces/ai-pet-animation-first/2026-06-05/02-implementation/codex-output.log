@@ -1,0 +1,16 @@
+$ codex exec --cd "{repoPath}" --ask-for-approval never --sandbox workspace-write -
+Exit Code: 2
+Duration: 00:00:00.1872751
+
+STDOUT
+
+
+STDERR
+error: unexpected argument '--ask-for-approval' found
+
+  tip: to pass '--ask-for-approval' as a value, use '-- --ask-for-approval'
+
+Usage: codex exec [OPTIONS] [PROMPT]
+       codex exec [OPTIONS] <COMMAND> [ARGS]
+
+For more information, try '--help'.

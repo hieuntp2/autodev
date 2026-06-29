@@ -1,0 +1,11 @@
+$ .\gradlew.bat test
+Exit Code: 1
+Duration: 00:00:00.0198803
+
+STDOUT
+
+STDERR
+'.\gradlew.bat' is not recognized as an internal or external command,
+operable program or batch file.
+
+

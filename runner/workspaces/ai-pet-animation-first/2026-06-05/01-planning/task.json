@@ -1,0 +1,29 @@
+{
+  "title": "Set up project skeleton with modular Compose-based structure and Home screen",
+  "type": "feature",
+  "priority": 1,
+  "scope": "Create Gradle Android project with modules: app, ui-avatar, brain, memory, core-common. Configure Compose, set up buildable Home screen, and wire modules for future animated digital pet development. No animation or business logic yet.",
+  "reason": "Enables all subsequent animation-first pet features. Provides visible product progress for iteration and developer alignment.",
+  "modules": ["app", "ui-avatar", "brain", "memory", "core-common"],
+  "acceptanceCriteria": [
+    "Project builds with .\\gradlew.bat assembleDebug.",
+    "App launches to a Home screen using Jetpack Compose.",
+    "Modules are present and wired: app/, ui-avatar/, brain/, memory/, core-common/.",
+    "No forbidden features (camera, audio, cloud, robot).",
+    "No placeholder production logic.",
+    "No protected files changed.",
+    "Build passes."
+  ],
+  "mustNotDo": [
+    "Implement animation logic.",
+    "Stub business logic.",
+    "Touch protected requirement files.",
+    "Add unrelated dependencies.",
+    "Change out-of-scope files."
+  ],
+  "buildCommands": [
+    ".\\gradlew.bat assembleDebug",
+    ".\\gradlew.bat test"
+  ],
+  "riskLevel": "low"
+}
