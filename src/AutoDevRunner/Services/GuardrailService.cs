@@ -1,0 +1,52 @@
+using System.Text.RegularExpressions;
+
+namespace AutoDevRunner.Services;
+
+public record GuardrailResult(bool Ok, List<string> Violations)
+{
+    public static GuardrailResult Pass() => new(true, new());
+}
+
+/// <summary>
+/// Post-run safety checks. The AI does its own editing, so guardrails are
+/// enforced here by inspecting what changed before we commit.
+/// </summary>
+public class GuardrailService
+{
+    // File patterns the AI must never modify.
+    private static readonly Regex[] ProtectedPatterns =
+    {
+        new(@"(^|/|\\)\.env($|\.)", RegexOptions.IgnoreCase),
+        new(@"(^|/|\\)secrets?($|[./\\])", RegexOptions.IgnoreCase),
+        new(@"(^|/|\\)credentials?($|[./\\])", RegexOptions.IgnoreCase),
+        new(@"\.(pem|key|pfx|p12|keystore)$", RegexOptions.IgnoreCase),
+        new(@"(^|/|\\)id_rsa", RegexOptions.IgnoreCase),
+        new(@"(^|/|\\)\.git(/|\\)", RegexOptions.IgnoreCase),
+    };
+
+    /// <summary>Returns the guardrail instructions injected into every AI prompt.</summary>
+    public static string PromptGuardrails(bool allowMain, bool autoPush) =>
+$@"## Hard safety rules (must follow)
+- Do NOT modify secret files: .env, credentials, *.pem, *.key, private keys, keystores.
+- Do NOT run destructive commands: no `rm -rf` of the project, no disk formatting, no `git reset --hard`, no force push.
+- {(allowMain ? "You may commit on the current branch." : "Do NOT switch to or commit on main/master; work only on the AI branch already checked out for you.")}
+- Do NOT push to remote.{(autoPush ? " (The runner handles pushing if configured.)" : string.Empty)}
+- Make focused, incremental changes. Leave the repo in a buildable state.";
+
+    /// <summary>Check the list of changed files against protected patterns.</summary>
+    public GuardrailResult Check(IEnumerable<string> changedFiles)
+    {
+        var violations = new List<string>();
+        foreach (var file in changedFiles)
+            foreach (var pattern in ProtectedPatterns)
+                if (pattern.IsMatch(file))
+                {
+                    violations.Add(file);
+                    break;
+                }
+
+        return violations.Count == 0
+            ? GuardrailResult.Pass()
+            : new GuardrailResult(false, violations);
+    }
+}

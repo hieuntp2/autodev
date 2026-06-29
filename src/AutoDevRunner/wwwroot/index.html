@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoDev Runner</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">⚙️ AutoDev Runner</div>
+    <nav id="nav">
+      <button data-view="overview" class="active">Overview</button>
+      <button data-view="projects">Projects</button>
+      <button data-view="runs">Runs</button>
+      <button data-view="providers">Providers</button>
+      <button data-view="settings">Settings</button>
+    </nav>
+    <button id="refresh" title="Refresh">↻</button>
+  </header>
+
+  <main id="app">Loading…</main>
+
+  <!-- Project create/edit modal -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <h3 id="modal-title">New project</h3>
+      <div id="modal-body"></div>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="ghost">Cancel</button>
+        <button id="modal-save" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

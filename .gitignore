@@ -1,0 +1,12 @@
+# Build output
+bin/
+obj/
+publish/
+
+# Runtime data (per-repo run logs/summaries)
+.ai-runner/
+**/.ai-runner/
+
+# Scratch
+scratch_run.log
+*.user
