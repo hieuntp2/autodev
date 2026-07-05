@@ -19,15 +19,21 @@ public static class ProviderOutputAnalyzer
 
     private static readonly string[] AuthSignals =
     {
-        "unauthorized", "401", "authentication", "not logged in", "please log in",
-        "please login", "invalid api key", "no api key", "auth error",
-        "credentials", "forbidden", "403", "session expired", "run /login",
-        "please run", "login required"
+        "unauthorized", "401", "authentication failed", "authentication error",
+        "not logged in", "please log in", "please login", "invalid api key",
+        "no api key", "auth error", "forbidden", "403", "session expired",
+        "run /login", "login required"
     };
 
     public static ProviderOutcome Classify(int exitCode, bool timedOut, string output)
     {
         if (timedOut) return ProviderOutcome.Timeout;
+
+        // Trust a clean exit. The CLIs echo the prompt (which legitimately
+        // contains words like "credentials" in the guardrail section) back into
+        // their output, so pattern-matching successful runs produces false
+        // auth/quota positives.
+        if (exitCode == 0) return ProviderOutcome.Success;
 
         var lower = output.ToLowerInvariant();
 
@@ -35,7 +41,7 @@ public static class ProviderOutputAnalyzer
         if (ContainsAny(lower, AuthSignals)) return ProviderOutcome.AuthError;
         if (ContainsAny(lower, QuotaSignals)) return ProviderOutcome.QuotaLimit;
 
-        return exitCode == 0 ? ProviderOutcome.Success : ProviderOutcome.Error;
+        return ProviderOutcome.Error;
     }
 
     private static bool ContainsAny(string text, string[] needles)
