@@ -19,6 +19,18 @@ builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, relo
 // Run as a Windows Service when launched by the SCM (no-op otherwise).
 builder.Host.UseWindowsService(o => o.ServiceName = "AutoDevRunner");
 
+// File log (logs/autodev-<date>.log next to the exe). The app is headless
+// (WinExe, no console window), so this file is how humans and AI follow it:
+//   Get-Content .\publish\logs\autodev-*.log -Tail 50 -Wait
+if (builder.Configuration.GetValue("Logging:File:Enabled", true))
+{
+    var logDir = builder.Configuration["Logging:File:Directory"] ?? "logs";
+    if (!Path.IsPathRooted(logDir))
+        logDir = Path.Combine(AppContext.BaseDirectory, logDir);
+    var minLevel = builder.Configuration.GetValue("Logging:File:MinLevel", LogLevel.Information);
+    builder.Logging.AddProvider(new FileLoggerProvider(logDir, minLevel));
+}
+
 // ---- Options ----
 builder.Services.Configure<AutoDevOptions>(builder.Configuration.GetSection(AutoDevOptions.SectionName));
 var autoDevOptions = builder.Configuration.GetSection(AutoDevOptions.SectionName).Get<AutoDevOptions>() ?? new();

@@ -7,6 +7,9 @@
     <RootNamespace>AutoDevRunner</RootNamespace>
     <AssemblyName>AutoDevRunner</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Headless: no console window when launched by Task Scheduler/logon.
+         Observability comes from the file log (logs/autodev-*.log) and the dashboard. -->
+    <OutputType Condition="'$(OS)' == 'Windows_NT'">WinExe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>

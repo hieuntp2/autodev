@@ -70,7 +70,13 @@ public class RunOrchestrator
         await _db.SaveChangesAsync(ct);
 
         var logBuffer = new StringBuilder();
-        void Log(string line) => logBuffer.AppendLine(line);
+        void Log(string line)
+        {
+            logBuffer.AppendLine(line);
+            // Mirror to the file log so a live run can be followed with
+            // Logging:File:MinLevel=Debug (the buffer is only persisted at the end).
+            _log.LogDebug("run#{RunId} {Line}", run.Id, line);
+        }
 
         try
         {

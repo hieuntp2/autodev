@@ -227,6 +227,21 @@ Start-ScheduledTask -TaskName AutoDevRunner-Run
 `uninstaller.ps1` dừng và xóa cả hai task. Thư mục `./publish` và database
 PostgreSQL không bị đụng tới.
 
+### Headless & log file
+
+App build dạng **WinExe** — chạy hoàn toàn ngầm, không mở cửa sổ console (cả
+dashboard lẫn `--run-due`). Theo dõi hoạt động qua:
+
+- **Log file**: `logs/autodev-<yyyyMMdd>.log` cạnh exe (mỗi ngày một file).
+  Xem trực tiếp: `Get-Content .\publish\logs\autodev-*.log -Tail 50 -Wait`
+- **Dashboard**: http://localhost:5099 (trạng thái run, lịch sử, output).
+- **Per-run report**: `<repo-mục-tiêu>\.ai-runner\runs\*.md`.
+
+Cấu hình trong `Logging:File` (appsettings): `Enabled`, `Directory`, `MinLevel`.
+Đặt `MinLevel: "Debug"` để mirror cả output trực tiếp của Codex/Claude vào log
+(theo dõi live một run đang chạy). Muốn dừng app headless: `Stop-Process -Name
+AutoDevRunner` hoặc chạy `uninstaller.ps1`.
+
 > App vẫn có thể chạy như một Windows Service (`builder.Host.UseWindowsService`)
 > hoặc dùng scheduler nội bộ (`AutoDev:Scheduler:Enabled = true`) nếu bạn không
 > muốn dùng Task Scheduler.
