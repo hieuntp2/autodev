@@ -25,13 +25,25 @@ public class GuardrailService
     };
 
     /// <summary>Returns the guardrail instructions injected into every AI prompt.</summary>
-    public static string PromptGuardrails(bool allowMain, bool autoPush) =>
+    public static string PromptGuardrails(bool allowMain, bool autoPush,
+        string? repoPath = null, bool blockDeletions = true, bool blockOutOfProject = true)
+    {
+        var scope = string.IsNullOrWhiteSpace(repoPath) ? "the project repository" : $"`{repoPath}`";
+        var deletionRule = blockDeletions
+            ? "- Do NOT delete files. If something looks obsolete, leave it (or empty its body) rather than removing it — the runner blocks and reverts any run that deletes files.\n"
+            : string.Empty;
+        var scopeRule = blockOutOfProject
+            ? $"- Stay INSIDE the project. Only create/modify files under {scope}. Do NOT touch, create, or delete anything outside it (no absolute paths, no `..` escaping the repo, no edits to your home dir, system files, or other projects) — the runner blocks any run that writes outside the project.\n"
+            : string.Empty;
+
+        return
 $@"## Hard safety rules (must follow)
 - Do NOT modify secret files: .env, credentials, *.pem, *.key, private keys, keystores.
 - Do NOT run destructive commands: no `rm -rf` of the project, no disk formatting, no `git reset --hard`, no force push.
-- {(allowMain ? "You may commit on the current branch." : "Do NOT switch to or commit on main/master; work only on the AI branch already checked out for you.")}
+{deletionRule}{scopeRule}- {(allowMain ? "You may commit on the current branch." : "Do NOT switch to or commit on main/master; work only on the AI branch already checked out for you.")}
 - Do NOT push to remote.{(autoPush ? " (The runner handles pushing if configured.)" : string.Empty)}
 - Make focused, incremental changes. Leave the repo in a buildable state.";
+    }
 
     /// <summary>Check the list of changed files against protected patterns.</summary>
     public GuardrailResult Check(IEnumerable<string> changedFiles)

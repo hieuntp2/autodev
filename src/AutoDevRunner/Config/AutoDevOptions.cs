@@ -31,11 +31,29 @@ public class RiskOptions
 {
     /// <summary>
     /// When false (default), a run whose task is classified <c>Risky</c> (DB
-    /// migration, mass deletion, deploy/production, secret/config edits, large
-    /// refactor) is NOT executed autonomously — it is blocked and reported as
-    /// requiring manual approval/config. When true, risky runs proceed.
+    /// migration, deploy/production, secret/config edits, large refactor) is NOT
+    /// executed autonomously — it is blocked and reported as requiring manual
+    /// approval/config. When true, risky runs proceed — EXCEPT for the two
+    /// always-blocked actions below, which stay blocked even in this mode.
     /// </summary>
     public bool AllowRiskyAutonomousRuns { get; set; } = false;
+
+    /// <summary>
+    /// Hard guard, independent of <see cref="AllowRiskyAutonomousRuns"/>. When
+    /// true (default), a run that deletes any file is blocked (its changes are
+    /// left uncommitted for manual review) even when risky runs are allowed. The
+    /// agent is also told in-prompt never to delete files.
+    /// </summary>
+    public bool BlockFileDeletions { get; set; } = true;
+
+    /// <summary>
+    /// Hard guard, independent of <see cref="AllowRiskyAutonomousRuns"/>. When
+    /// true (default), any create/modify/delete of a path outside the project
+    /// repository (absolute paths or <c>..</c> traversal that escapes the repo)
+    /// is blocked. Enforced in-prompt (the agent is scoped to the project dir)
+    /// and defensively re-checked against the detected changes before commit.
+    /// </summary>
+    public bool BlockOutOfProjectChanges { get; set; } = true;
 }
 
 /// <summary>

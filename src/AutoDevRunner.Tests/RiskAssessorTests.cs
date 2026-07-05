@@ -20,6 +20,33 @@ public class RiskAssessorTests
     }
 
     [Fact]
+    public void Deleting_a_file_is_reported_as_an_always_blocked_action()
+    {
+        var r = _risk.Assess(Changes((" D", "src/Old.cs"), ("D ", "src/Gone.cs")), "cleanup");
+        Assert.Single(r.Deletions);
+        Assert.Contains(r.Deletions, x => x.Contains("2 file"));
+        Assert.Empty(r.OutOfProject);
+    }
+
+    [Theory]
+    [InlineData("/etc/hosts")]
+    [InlineData("C:/Windows/system32/drivers/etc/hosts")]
+    [InlineData("../../other-project/secret.txt")]
+    public void Writing_outside_the_project_is_an_always_blocked_action(string path)
+    {
+        var r = _risk.Assess(Changes((" M", path)), "edit config");
+        Assert.Equal(RiskLevel.Risky, r.Level);
+        Assert.NotEmpty(r.OutOfProject);
+    }
+
+    [Fact]
+    public void Relative_paths_inside_the_project_are_not_out_of_project()
+    {
+        var r = _risk.Assess(Changes((" M", "src/a/../b/File.cs")), "refactor");
+        Assert.Empty(r.OutOfProject);
+    }
+
+    [Fact]
     public void Editing_appsettings_is_risky()
     {
         var r = _risk.Assess(Changes((" M", "src/AutoDevRunner/appsettings.json")), "tweak config");

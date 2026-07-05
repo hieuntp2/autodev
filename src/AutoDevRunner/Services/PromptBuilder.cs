@@ -15,7 +15,8 @@ public class PromptBuilder
 
     public string Build(Project project, string brief, RunRecord run,
         string? creativePlan = null, IReadOnlyList<SkillMatch>? skills = null,
-        ProjectGoal? goal = null, TaskProposal? proposal = null, RiskLevel? risk = null)
+        ProjectGoal? goal = null, TaskProposal? proposal = null, RiskLevel? risk = null,
+        Config.RiskOptions? riskPolicy = null)
     {
         var sb = new StringBuilder();
 
@@ -146,7 +147,8 @@ public class PromptBuilder
         sb.AppendLine("5. Keep the project buildable.");
         sb.AppendLine();
 
-        sb.AppendLine(GuardrailService.PromptGuardrails(project.AllowRunOnMainBranch, project.AutoPush));
+        sb.AppendLine(GuardrailService.PromptGuardrails(project.AllowRunOnMainBranch, project.AutoPush,
+            project.RepoPath, riskPolicy?.BlockFileDeletions ?? true, riskPolicy?.BlockOutOfProjectChanges ?? true));
         sb.AppendLine();
 
         AppendRequiredOutput(sb, skills);

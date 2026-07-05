@@ -159,15 +159,15 @@ public class RunOrchestrator
                 .Where(s => !string.IsNullOrWhiteSpace(s)));
             _riskAssessment = _risk.Assess(Array.Empty<GitChange>(), intent);
 
-            // 3e. Risk gate: do not run risky tasks autonomously unless allowed.
-            if (_riskAssessment.Level == RiskLevel.Risky && !_opt.Risk.AllowRiskyAutonomousRuns)
+            // 3e. Risk gate: hard guards (file deletion / writes outside the repo)
+            //     always block; other risky tasks block only when risky autonomous
+            //     runs are not allowed.
+            var preGate = EvaluateRiskGate();
+            if (preGate.Blocked)
             {
                 _stage = LifecycleStage.Failed;
-                var why = "Risky task blocked (requires manual approval): "
-                          + string.Join("; ", _riskAssessment.Reasons)
-                          + ". Set AutoDev:Risk:AllowRiskyAutonomousRuns=true to allow.";
-                Log("RISK GATE: " + why);
-                await FailAsync(project, run, RunStatus.Paused, why, logBuffer, null, ct);
+                Log("RISK GATE: " + preGate.Why);
+                await FailAsync(project, run, RunStatus.Paused, preGate.Why, logBuffer, null, ct);
                 return run;
             }
 
@@ -177,7 +177,7 @@ public class RunOrchestrator
             // 4. Build prompt. Task is now planned.
             _stage = LifecycleStage.Planned;
             var prompt = _promptBuilder.Build(project, brief, run, creativePlan, _selectedSkills,
-                goal, proposal, _riskAssessment.Level);
+                goal, proposal, _riskAssessment.Level, _opt.Risk);
 
             // Persist the exact prompt, plan and task on the run so prompt/plan
             // evolution is queryable in the DB (not just in the .ai-runner files).
@@ -309,13 +309,17 @@ public class RunOrchestrator
             else
                 Log($"Risk level: {_riskAssessment.Level}.");
 
-            // 8c. If the changes turned out risky and risky runs aren't allowed, do
-            //     not commit them — leave them for manual review.
-            if (_riskAssessment.Level == RiskLevel.Risky && !_opt.Risk.AllowRiskyAutonomousRuns)
+            // 8c. If the changes hit a hard guard (file deletion / writes outside
+            //     the repo) — always blocked — or turned out risky while risky runs
+            //     aren't allowed, do not commit them: leave them for manual review.
+            var postGate = EvaluateRiskGate();
+            if (postGate.Blocked)
             {
                 _stage = LifecycleStage.Failed;
-                run.Reason = "Risky changes left uncommitted (requires manual review): "
-                             + string.Join("; ", _riskAssessment.Reasons);
+                run.Reason = postGate.Hard
+                    ? "Changes left uncommitted — " + postGate.Why
+                    : "Risky changes left uncommitted (requires manual review): "
+                      + string.Join("; ", _riskAssessment.Reasons);
                 Log("RISK GATE: " + run.Reason);
                 await FinalizeAsync(project, run, RunStatus.Paused, summary, logBuffer, ct, commit: false);
                 return run;
@@ -465,6 +469,32 @@ public class RunOrchestrator
         }
         if (!string.IsNullOrWhiteSpace(inv.Usage)) st.LastKnownUsage = inv.Usage;
         await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Decide whether the current <see cref="_riskAssessment"/> blocks autonomous
+    /// execution. File deletions and writes outside the repo are ALWAYS blocked
+    /// (config-gated hard guards), independent of AllowRiskyAutonomousRuns. Other
+    /// risky runs are blocked only when AllowRiskyAutonomousRuns is false.
+    /// </summary>
+    private (bool Blocked, bool Hard, string Why) EvaluateRiskGate()
+    {
+        var hard = new List<string>();
+        if (_opt.Risk.BlockFileDeletions) hard.AddRange(_riskAssessment.Deletions);
+        if (_opt.Risk.BlockOutOfProjectChanges) hard.AddRange(_riskAssessment.OutOfProject);
+
+        if (hard.Count > 0)
+            return (true, true,
+                "Always-blocked action (not permitted even with AllowRiskyAutonomousRuns): "
+                + string.Join("; ", hard.Distinct(StringComparer.OrdinalIgnoreCase)));
+
+        if (_riskAssessment.Level == RiskLevel.Risky && !_opt.Risk.AllowRiskyAutonomousRuns)
+            return (true, false,
+                "Risky task blocked (requires manual approval): "
+                + string.Join("; ", _riskAssessment.Reasons)
+                + ". Set AutoDev:Risk:AllowRiskyAutonomousRuns=true to allow.");
+
+        return (false, false, string.Empty);
     }
 
     private async Task PauseAsync(Project project, RunRecord run, RunStatus status,

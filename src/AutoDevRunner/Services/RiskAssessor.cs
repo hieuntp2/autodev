@@ -3,7 +3,24 @@ using AutoDevRunner.Models;
 
 namespace AutoDevRunner.Services;
 
-public record RiskAssessment(RiskLevel Level, List<string> Reasons);
+/// <summary>
+/// Result of a risk assessment. <see cref="Reasons"/> is the full list used to
+/// classify <see cref="Level"/>. <see cref="DeletionReasons"/> and
+/// <see cref="OutOfProjectReasons"/> are the subset that must be blocked even
+/// when risky autonomous runs are allowed (see <c>RiskOptions</c>).
+/// </summary>
+public record RiskAssessment(
+    RiskLevel Level,
+    List<string> Reasons,
+    List<string>? DeletionReasons = null,
+    List<string>? OutOfProjectReasons = null)
+{
+    /// <summary>Reasons this run deletes files (always-blockable).</summary>
+    public IReadOnlyList<string> Deletions => DeletionReasons ?? (IReadOnlyList<string>)Array.Empty<string>();
+
+    /// <summary>Reasons this run touches paths outside the repo (always-blockable).</summary>
+    public IReadOnlyList<string> OutOfProject => OutOfProjectReasons ?? (IReadOnlyList<string>)Array.Empty<string>();
+}
 
 /// <summary>
 /// Classifies a run's blast radius as safe / normal / risky by inspecting the
@@ -53,8 +70,28 @@ public class RiskAssessor
     {
         var reasons = new List<string>();
 
-        if (changes.Any(c => c.IsDelete))
-            reasons.Add($"deletes {changes.Count(c => c.IsDelete)} file(s)");
+        // Always-blockable subsets (enforced regardless of AllowRiskyAutonomousRuns).
+        var deletions = new List<string>();
+        var outOfProject = new List<string>();
+
+        var deleteCount = changes.Count(c => c.IsDelete);
+        if (deleteCount > 0)
+        {
+            var why = $"deletes {deleteCount} file(s)";
+            reasons.Add(why);
+            deletions.Add(why);
+        }
+
+        // A change whose path is rooted or escapes the repo via ".." is outside
+        // the project. Git emits repo-relative paths, so this is a defensive
+        // catch for any absolute/traversal path that reaches us.
+        foreach (var change in changes)
+            if (IsOutsideProject(change.Path))
+            {
+                var why = $"writes outside the project ({change.Path})";
+                reasons.Add(why);
+                outOfProject.Add(why);
+            }
 
         foreach (var change in changes)
             foreach (var (rx, why) in RiskyPaths)
@@ -70,7 +107,8 @@ public class RiskAssessor
                     reasons.Add(why);
 
         if (reasons.Count > 0)
-            return new RiskAssessment(RiskLevel.Risky, Dedupe(reasons));
+            return new RiskAssessment(RiskLevel.Risky, Dedupe(reasons),
+                Dedupe(deletions), Dedupe(outOfProject));
 
         // No risky signals: safe only if every change is an asset/doc/test.
         var paths = changes.Select(c => NormalizeSlashes(c.Path)).ToList();
@@ -78,6 +116,22 @@ public class RiskAssessor
             return new RiskAssessment(RiskLevel.Safe, new() { "only assets/docs/tests changed" });
 
         return new RiskAssessment(RiskLevel.Normal, new());
+    }
+
+    /// <summary>True if a change path is absolute or uses ".." to escape the repo root.</summary>
+    private static bool IsOutsideProject(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var p = NormalizeSlashes(path.Trim());
+        if (Path.IsPathRooted(p) || p.StartsWith("//")) return true;  // absolute / UNC
+
+        var depth = 0;
+        foreach (var seg in p.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (seg == "..") { if (--depth < 0) return true; }
+            else if (seg != ".") depth++;
+        }
+        return false;
     }
 
     private static string NormalizeSlashes(string p) => p.Replace('\\', '/');
