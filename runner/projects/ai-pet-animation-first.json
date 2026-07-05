@@ -12,6 +12,10 @@
   "statusFile": "docs/active/implementation-status.md",
   "agentRulesFile": "AGENTS.md",
 
+  "plannerVectorStoreIds": [
+    "vs_6a49ceb5fce081919de8048b6a6d548c"
+  ],
+
   "buildCommands": [
     ".\\gradlew.bat assembleDebug"
   ],

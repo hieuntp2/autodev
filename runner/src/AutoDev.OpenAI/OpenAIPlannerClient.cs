@@ -1,6 +1,5 @@
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace AutoDev.OpenAI;
@@ -23,14 +22,27 @@ public sealed class OpenAIPlannerClient(HttpClient httpClient)
             model = "gpt-4.1";
         }
 
+        var body = new JsonObject
+        {
+            ["model"] = model,
+            ["input"] = request.Prompt
+        };
+
+        var vectorStoreIds = ResolveVectorStoreIds(request.Project.PlannerVectorStoreIds);
+        if (vectorStoreIds.Count > 0)
+        {
+            body["tools"] = new JsonArray(
+                new JsonObject
+                {
+                    ["type"] = "file_search",
+                    ["vector_store_ids"] = new JsonArray(vectorStoreIds.Select(id => JsonValue.Create(id)).ToArray<JsonNode?>())
+                });
+        }
+
         using var message = new HttpRequestMessage(HttpMethod.Post, ResponsesEndpoint);
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         message.Content = new StringContent(
-            JsonSerializer.Serialize(new
-            {
-                model,
-                input = request.Prompt
-            }),
+            body.ToJsonString(),
             Encoding.UTF8,
             "application/json");
 
@@ -53,6 +65,30 @@ public sealed class OpenAIPlannerClient(HttpClient httpClient)
         }
 
         return text.Trim();
+    }
+
+    /// <summary>
+    /// Knowledge base vector stores attached to every planner call via the file_search tool.
+    /// Project config (plannerVectorStoreIds) wins; OPENAI_VECTOR_STORE_IDS (comma-separated) is the fallback.
+    /// </summary>
+    private static IReadOnlyList<string> ResolveVectorStoreIds(IReadOnlyList<string> configuredIds)
+    {
+        var ids = configuredIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .ToList();
+
+        if (ids.Count > 0)
+        {
+            return ids;
+        }
+
+        var fromEnvironment = Environment.GetEnvironmentVariable("OPENAI_VECTOR_STORE_IDS");
+        return string.IsNullOrWhiteSpace(fromEnvironment)
+            ? []
+            : fromEnvironment
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToArray();
     }
 
     private static string ExtractText(string rawJson)

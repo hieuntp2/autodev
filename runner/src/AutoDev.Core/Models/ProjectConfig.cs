@@ -13,6 +13,7 @@ public sealed record ProjectConfig
     public string? BacklogFile { get; init; }
     public string? StatusFile { get; init; }
     public string? AgentRulesFile { get; init; }
+    public IReadOnlyList<string> PlannerVectorStoreIds { get; init; } = [];
     public IReadOnlyList<string> BuildCommands { get; init; } = [];
     public IReadOnlyList<string> TestCommands { get; init; } = [];
     public IReadOnlyList<string> AllowedWritePaths { get; init; } = [];

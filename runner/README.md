@@ -29,6 +29,19 @@ It is separate from the target project it modifies. The runner owns project conf
 Optional:
 
 - `OPENAI_PLANNER_MODEL` to override the default planner model.
+- `OPENAI_VECTOR_STORE_IDS` (comma-separated) — knowledge base vector stores attached to every planner call via the `file_search` tool. Used only when the project config does not set `plannerVectorStoreIds`.
+
+### Planner knowledge base
+
+Every planner call can search an OpenAI vector store knowledge base. Configure it per project in `projects/<projectId>.json`:
+
+```json
+"plannerVectorStoreIds": [
+  "vs_6a49ceb5fce081919de8048b6a6d548c"
+]
+```
+
+Change the id(s) here (or via `OPENAI_VECTOR_STORE_IDS`) to swap the knowledge base. Leave both empty to disable file search.
 
 ## Setup
 
