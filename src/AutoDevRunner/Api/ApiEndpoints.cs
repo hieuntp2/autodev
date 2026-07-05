@@ -187,6 +187,38 @@ public static class ApiEndpoints
             }));
         });
 
+        // ---- Filesystem browse (folder picker for repo path) ----
+        api.MapGet("/fs/browse", (string? path) =>
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                var drives = DriveInfo.GetDrives()
+                    .Where(d => d.IsReady)
+                    .Select(d => new DirEntryDto(d.Name, d.RootDirectory.FullName))
+                    .ToList();
+                return Results.Ok(new BrowseDto("", null, drives));
+            }
+
+            try
+            {
+                var full = Path.GetFullPath(path);
+                if (!Directory.Exists(full))
+                    return Results.NotFound($"Directory not found: {full}");
+
+                var parent = Directory.GetParent(full)?.FullName ?? "";
+                var dirs = new DirectoryInfo(full).EnumerateDirectories()
+                    .Where(d => (d.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0)
+                    .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(d => new DirEntryDto(d.Name, d.FullName))
+                    .ToList();
+                return Results.Ok(new BrowseDto(full, parent, dirs));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Results.Problem("Access denied.", statusCode: StatusCodes.Status403Forbidden);
+            }
+        });
+
         // ---- Scheduler settings (read-only view of config) ----
         api.MapGet("/settings", (IOptions<AutoDevOptions> opt) =>
         {

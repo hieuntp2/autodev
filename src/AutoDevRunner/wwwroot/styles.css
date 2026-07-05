@@ -120,5 +120,20 @@ pre {
 .field.row input[type=checkbox] { width: 16px; height: 16px; }
 .field.row label { margin: 0; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+/* Folder picker */
+.pathpick { display: flex; gap: 8px; }
+.pathpick input { flex: 1; }
+.pathpick button { white-space: nowrap; }
+.folder-browser { margin-top: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); overflow: hidden; }
+.folder-browser.hidden { display: none; }
+.fb-head { display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid var(--border); }
+.fb-head button { margin: 0; }
+.fb-head button:disabled { opacity: .45; cursor: default; }
+.fb-path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.fb-list { max-height: 220px; overflow-y: auto; }
+.fb-item { padding: 6px 10px; cursor: pointer; user-select: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-item:hover { background: var(--panel); }
+.fb-empty { padding: 10px; }
+
 .toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel-2); border: 1px solid var(--border); padding: 12px 16px; border-radius: 8px; z-index: 100; }
 .toast.err { border-color: var(--red); }

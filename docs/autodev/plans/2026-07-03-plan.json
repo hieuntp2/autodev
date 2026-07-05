@@ -1,0 +1,68 @@
+{
+  "plan_date": "2026-07-03",
+  "theme": "Planting the first seed",
+  "creative_direction": "Bring the garden into existence: a minimal Angular + PixiJS world with a first living sprout and a sky that knows what time it is.",
+  "tasks": [
+    {
+      "id": "DPG-20260703-001",
+      "title": "Scaffold the Daily Pixel Garden app (Angular + PixiJS)",
+      "type": "foundation",
+      "priority": "high",
+      "estimated_size": "medium",
+      "implementation_prompt": "Create a minimal Angular workspace at apps/daily-pixel-garden with a single standalone component hosting a full-window PixiJS canvas. Add pixi.js as the only extra dependency. Initialize the Pixi Application in ngAfterViewInit, destroy it in ngOnDestroy, and render a plain dark-soil background color so the canvas is visibly alive. Configure crisp pixel rendering (roundPixels, nearest scale mode). Add a short README.md in the app folder explaining npm start / npm run build. No routing, no backend, no tests scaffolding beyond the Angular defaults.",
+      "acceptance_criteria": [
+        "npm install succeeds in apps/daily-pixel-garden",
+        "npm run build succeeds",
+        "npm start serves a full-window canvas with the soil background",
+        "No console errors in the browser"
+      ],
+      "status": "pending",
+      "completed_at": null
+    },
+    {
+      "id": "DPG-20260703-002",
+      "title": "Render the first garden scene: sky, grass, one sprout",
+      "type": "visual",
+      "priority": "high",
+      "estimated_size": "small",
+      "implementation_prompt": "In the PixiJS scene, draw a simple pixel landscape using PIXI.Graphics rectangles only: a banded sky gradient (3-4 horizontal color bands), a grass strip along the bottom third, and one small green sprout (a few stacked pixels with two tiny leaves) near the center of the grass. Keep colors soft and cozy. Structure the code so the scene is built in a dedicated function/class that later tasks can extend. Handle window resize so the scene fills the window.",
+      "acceptance_criteria": [
+        "App builds successfully",
+        "Sky, grass, and a single sprout are visible",
+        "Scene resizes with the browser window",
+        "No console errors"
+      ],
+      "status": "pending",
+      "completed_at": null
+    },
+    {
+      "id": "DPG-20260703-003",
+      "title": "Give the sky a sense of time (day/night tint)",
+      "type": "visual",
+      "priority": "medium",
+      "estimated_size": "small",
+      "implementation_prompt": "Tint the sky bands based on the visitor's local time: dawn (5-8h), day (8-17h), dusk (17-20h), night (20-5h), each with its own small palette. Compute the palette once at startup from new Date().getHours(); no timers needed yet. Keep the palettes defined in one easily editable constant so future weather tasks can reuse them.",
+      "acceptance_criteria": [
+        "App builds successfully",
+        "Sky palette differs between day and night (verifiable by temporarily overriding the hour)",
+        "Palette constants are defined in one place",
+        "No console errors"
+      ],
+      "status": "pending",
+      "completed_at": null
+    }
+  ],
+  "story_log": "Nothing existed here yesterday. Today a patch of dark soil appeared, a stretch of sky above it, and one brave sprout pushed through — the first resident of the Daily Pixel Garden.",
+  "future_ideas": [
+    "A small puddle that reflects the sky",
+    "A tiny lamp that turns on at night",
+    "Light rain particles passing through on some days",
+    "A snail that crosses the garden once per day"
+  ],
+  "constraints": [
+    "Keep each change small",
+    "Do not add backend, database, or auth",
+    "Do not add paid or external assets — draw with PixiJS primitives",
+    "Never put API keys in the frontend"
+  ]
+}

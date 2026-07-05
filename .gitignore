@@ -11,3 +11,9 @@ publish/
 scratch_run.log
 *.user
 .vs/
+
+# Autodev orchestrator secrets & run logs
+.env
+tools/autodev-orchestrator/appsettings.json
+docs/autodev/logs/*
+!docs/autodev/logs/.gitkeep

@@ -66,6 +66,12 @@ public record ProviderStatusDto(
     string? LastQuotaResetHint,
     string? LastKnownUsage);
 
+/// <summary>One directory entry in the folder picker. For drive roots, Name is e.g. "C:\".</summary>
+public record DirEntryDto(string Name, string Path);
+
+/// <summary>Folder-picker listing. Empty Path means the drive list; Parent is null at that level.</summary>
+public record BrowseDto(string Path, string? Parent, IReadOnlyList<DirEntryDto> Dirs);
+
 public static class DtoMappers
 {
     public static RunSummaryDto ToDto(this RunRecord r, string projectName) => new(

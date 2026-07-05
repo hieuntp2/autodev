@@ -7,6 +7,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{4315232B-420
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoDevRunner", "src\AutoDevRunner\AutoDevRunner.csproj", "{696423E1-7528-48F6-A888-9BE0FDC14FA1}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{AF094051-C632-4D37-99E7-B733DB934E24}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoDevOrchestrator", "tools\autodev-orchestrator\AutoDevOrchestrator.csproj", "{27CEC212-6B02-4C4F-8FBA-BA718EA60581}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,8 +24,13 @@ Global
 		{696423E1-7528-48F6-A888-9BE0FDC14FA1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{696423E1-7528-48F6-A888-9BE0FDC14FA1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{696423E1-7528-48F6-A888-9BE0FDC14FA1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{27CEC212-6B02-4C4F-8FBA-BA718EA60581}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{27CEC212-6B02-4C4F-8FBA-BA718EA60581}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{27CEC212-6B02-4C4F-8FBA-BA718EA60581}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{27CEC212-6B02-4C4F-8FBA-BA718EA60581}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{696423E1-7528-48F6-A888-9BE0FDC14FA1} = {4315232B-4205-403D-90E9-73779E5F6E91}
+		{27CEC212-6B02-4C4F-8FBA-BA718EA60581} = {AF094051-C632-4D37-99E7-B733DB934E24}
 	EndGlobalSection
 EndGlobal

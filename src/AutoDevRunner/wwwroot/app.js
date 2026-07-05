@@ -291,7 +291,13 @@ function openProjectModal(p) {
   $("#modal-title").textContent = isEdit ? `Edit ${p.name}` : "New project";
   $("#modal-body").innerHTML = `
     <div class="field"><label>Name *</label><input type="text" id="f-name" value="${esc(p.name || "")}"></div>
-    <div class="field"><label>Repo path *</label><input type="text" id="f-repo" value="${esc(p.repoPath || "")}" placeholder="C:\\path\\to\\repo"></div>
+    <div class="field"><label>Repo path *</label>
+      <div class="pathpick">
+        <input type="text" id="f-repo" value="${esc(p.repoPath || "")}" placeholder="C:\\path\\to\\repo">
+        <button type="button" id="f-repo-browse" class="ghost">Browse…</button>
+      </div>
+      <div id="folder-browser" class="folder-browser hidden"></div>
+    </div>
     <div class="field"><label>Brief file</label><input type="text" id="f-brief" value="${esc(p.briefPath || "ai-autonomous.md")}"></div>
     <div class="grid2">
       <div class="field"><label>Priority</label><input type="number" id="f-prio" value="${p.priority ?? 0}"></div>
@@ -308,6 +314,11 @@ function openProjectModal(p) {
     <div class="field"><label>Notes</label><textarea id="f-notes">${esc(p.notes || "")}</textarea></div>
   `;
   modal.classList.remove("hidden");
+  $("#f-repo-browse").onclick = () => {
+    const fb = $("#folder-browser");
+    if (fb.classList.contains("hidden")) openFolderBrowser($("#f-repo").value.trim());
+    else fb.classList.add("hidden");
+  };
   $("#modal-cancel").onclick = () => modal.classList.add("hidden");
   $("#modal-save").onclick = async () => {
     const body = {
@@ -333,6 +344,45 @@ function openProjectModal(p) {
       render();
     } catch (e) { toast(e.message, true); }
   };
+}
+
+// ---- Folder browser (repo path picker) ----
+async function openFolderBrowser(startPath) {
+  const fb = $("#folder-browser");
+  fb.classList.remove("hidden");
+  fb.innerHTML = `<div class="fb-empty muted">Loading…</div>`;
+  try {
+    await loadFolder(startPath);
+  } catch {
+    // Start path missing/inaccessible — fall back to the drive list.
+    try { await loadFolder(""); } catch (e) { fb.innerHTML = `<div class="fb-empty muted">${esc(e.message)}</div>`; }
+  }
+}
+
+async function loadFolder(path) {
+  const fb = $("#folder-browser");
+  const d = await api(`/fs/browse${path ? "?path=" + encodeURIComponent(path) : ""}`);
+  const atDrives = !d.path;
+  fb.innerHTML = `
+    <div class="fb-head">
+      <button type="button" class="sm" id="fb-up" ${d.parent === null && atDrives ? "disabled" : ""}>↑ Up</button>
+      <span class="fb-path mono" title="${esc(d.path)}">${esc(d.path || "Drives")}</span>
+      <button type="button" class="sm" id="fb-select" ${atDrives ? "disabled" : ""}>Select this folder</button>
+    </div>
+    <div class="fb-list">
+      ${d.dirs.length
+        ? d.dirs.map(x => `<div class="fb-item" data-path="${esc(x.path)}">📁 ${esc(x.name)}</div>`).join("")
+        : `<div class="fb-empty muted">No subfolders</div>`}
+    </div>
+  `;
+  $("#fb-up").onclick = () => loadFolder(d.parent ?? "").catch(e => toast(e.message, true));
+  $("#fb-select").onclick = () => {
+    $("#f-repo").value = d.path;
+    fb.classList.add("hidden");
+  };
+  fb.querySelectorAll(".fb-item").forEach(el => {
+    el.onclick = () => loadFolder(el.dataset.path).catch(e => toast(e.message, true));
+  });
 }
 
 // ---- boot ----
