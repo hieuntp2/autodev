@@ -12,6 +12,10 @@ var runOnce = args.Any(a => a is "--run-due" or "run-due" or "run");
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Local, untracked secret overrides (API keys). Loaded last so it wins over
+// appsettings.json. Kept out of git via .gitignore — see appsettings.Local.json.
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+
 // Run as a Windows Service when launched by the SCM (no-op otherwise).
 builder.Host.UseWindowsService(o => o.ServiceName = "AutoDevRunner");
 

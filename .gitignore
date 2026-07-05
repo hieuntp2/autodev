@@ -12,6 +12,9 @@ scratch_run.log
 *.user
 .vs/
 
+# Local secret overrides (never committed) — API keys live here, not in appsettings.json
+appsettings.Local.json
+
 # Autodev orchestrator secrets & run logs
 .env
 tools/autodev-orchestrator/appsettings.json
