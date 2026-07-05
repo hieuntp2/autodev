@@ -7,6 +7,41 @@ public class AutoDevOptions
     public SchedulerOptions Scheduler { get; set; } = new();
     public ProvidersOptions Providers { get; set; } = new();
     public EmailOptions Email { get; set; } = new();
+    public PlannerOptions Planner { get; set; } = new();
+}
+
+/// <summary>
+/// Optional OpenAI "creative planner" pre-step. Before the AI CLI runs, one
+/// OpenAI Responses API call is made with the file_search tool attached to the
+/// configured knowledge-base vector store(s). The resulting creative brief is
+/// injected into the CLI prompt so the implementer builds against it.
+/// The whole step is fail-soft: if disabled, unconfigured, or the call fails,
+/// the run proceeds with the base prompt.
+/// </summary>
+public class PlannerOptions
+{
+    /// <summary>Master switch. When false, no OpenAI call is made.</summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>Responses API model, e.g. "gpt-4.1".</summary>
+    public string Model { get; set; } = "gpt-4.1";
+
+    /// <summary>
+    /// OpenAI API key. Preferred here (in appsettings) so no global
+    /// OPENAI_API_KEY env var is required. Falls back to the OPENAI_API_KEY
+    /// environment variable only when this is empty.
+    /// </summary>
+    public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Knowledge-base vector store ids attached to every planner call via
+    /// file_search. Change these to swap the knowledge base. Empty disables
+    /// file search (the planner then reasons from the brief alone).
+    /// </summary>
+    public List<string> VectorStoreIds { get; set; } = new();
+
+    /// <summary>Responses API endpoint. Override for Azure/proxy setups.</summary>
+    public string ApiUrl { get; set; } = "https://api.openai.com/v1/responses";
 }
 
 public class SchedulerOptions

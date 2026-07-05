@@ -21,6 +21,7 @@ public class RunOrchestrator
     private readonly GitService _git;
     private readonly GuardrailService _guard;
     private readonly PromptBuilder _promptBuilder;
+    private readonly OpenAiCreativePlanner _planner;
     private readonly SummaryParser _summaryParser;
     private readonly EmailService _email;
     private readonly ProviderRegistry _providers;
@@ -31,13 +32,14 @@ public class RunOrchestrator
 
     public RunOrchestrator(
         AppDbContext db, GitService git, GuardrailService guard,
-        PromptBuilder promptBuilder, SummaryParser summaryParser, EmailService email,
+        PromptBuilder promptBuilder, OpenAiCreativePlanner planner,
+        SummaryParser summaryParser, EmailService email,
         ProviderRegistry providers, ProcessRunner proc, RunLock runLock,
         IOptions<AutoDevOptions> opt, ILogger<RunOrchestrator> log)
     {
         _db = db; _git = git; _guard = guard; _promptBuilder = promptBuilder;
-        _summaryParser = summaryParser; _email = email; _providers = providers;
-        _proc = proc; _lock = runLock; _opt = opt.Value; _log = log;
+        _planner = planner; _summaryParser = summaryParser; _email = email;
+        _providers = providers; _proc = proc; _lock = runLock; _opt = opt.Value; _log = log;
     }
 
     public async Task<RunRecord?> RunProjectAsync(int projectId, CancellationToken ct = default)
@@ -94,8 +96,13 @@ public class RunOrchestrator
             // 3. Load brief.
             var brief = await LoadBriefAsync(project, ct);
 
+            // 3b. Optional OpenAI creative planner (knowledge-base grounded). Fail-soft.
+            var creativePlan = await _planner.CreatePlanAsync(project, brief, ct);
+            if (!string.IsNullOrWhiteSpace(creativePlan))
+                Log("Creative planner produced a knowledge-base-grounded plan for this run.");
+
             // 4. Build prompt.
-            var prompt = _promptBuilder.Build(project, brief, run);
+            var prompt = _promptBuilder.Build(project, brief, run, creativePlan);
 
             // 5. Resolve provider order and try each until one runs (or all exhausted).
             var order = _providers.ResolveOrder(project.ProviderPriority).ToList();

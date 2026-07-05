@@ -90,6 +90,15 @@ thoát — không khởi động web host.
     "PublicKey": "",           // EmailJS public key  (gửi dưới dạng user_id)
     "PrivateKey": "",          // EmailJS private key (gửi dưới dạng accessToken)
     "ToEmail": "you@example.com"
+  },
+  "Planner": {                  // Creative planner OpenAI (tùy chọn) chạy TRƯỚC mỗi lần gọi CLI
+    "Enabled": true,
+    "Model": "gpt-4.1",
+    "ApiKey": "",              // OpenAI API key (để đây, KHÔNG cần env var toàn cục); trống → fallback env OPENAI_API_KEY
+    "ApiUrl": "https://api.openai.com/v1/responses",
+    "VectorStoreIds": [        // knowledge base gắn qua file_search; đổi id ở đây để thay KB
+      "vs_6a49ceb5fce081919de8048b6a6d548c"
+    ]
   }
 }
 ```
@@ -112,6 +121,24 @@ Báo cáo được gửi bằng cách POST tới EmailJS REST API — không c�
    applications"** và sao chép **public key** lẫn **private key**.
 4. Điền `ServiceId`, `TemplateId`, `PublicKey`, `PrivateKey`, `ToEmail` và đặt
    `Enabled: true`.
+
+### Creative planner + knowledge base (OpenAI)
+
+Trước mỗi lần chạy, nếu `AutoDev:Planner:Enabled = true`, runner gọi **một lần**
+OpenAI Responses API kèm tool `file_search` gắn vào (các) vector store trong
+`VectorStoreIds`. Kết quả là một **bản plan sáng tạo** bám theo knowledge base,
+được chèn vào prompt gửi cho Codex/Claude CLI. Prompt được thiết kế cho AI **toàn
+quyền sáng tạo, không cần approve** — accountability duy nhất là báo cáo/email sau
+mỗi lần chạy.
+
+- **Đổi knowledge base:** sửa `VectorStoreIds` trong `appsettings.json` (nhiều id
+  được). Để trống mảng → planner vẫn chạy nhưng không dùng file_search.
+- **API key:** điền `ApiKey` ngay trong `appsettings.json` (khỏi cần env var toàn
+  cục — tránh ảnh hưởng auth của Codex CLI). Nếu trống, runner mới đọc biến môi
+  trường `OPENAI_API_KEY`.
+- **Fail-soft:** nếu tắt, thiếu key, hoặc lời gọi lỗi, run vẫn tiếp tục với prompt
+  gốc — bước planner không bao giờ làm hỏng run.
+- Tắt hoàn toàn: đặt `Enabled: false`.
 
 ### Mẫu tham số (Arguments) cho provider
 

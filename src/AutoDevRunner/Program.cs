@@ -30,6 +30,7 @@ builder.Services.AddSingleton<ProcessRunner>();
 builder.Services.AddSingleton<GitService>();
 builder.Services.AddSingleton<GuardrailService>();
 builder.Services.AddSingleton<PromptBuilder>();
+builder.Services.AddSingleton<OpenAiCreativePlanner>();
 builder.Services.AddSingleton<SummaryParser>();
 builder.Services.AddSingleton<EmailService>();
 builder.Services.AddSingleton<RunLock>();
