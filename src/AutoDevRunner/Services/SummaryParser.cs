@@ -36,7 +36,10 @@ public class SummaryParser
             Ideas: Field("IDEAS"),
             Files: Field("FILES"),
             NextTask: Field("NEXT_TASK"),
-            FullText: idx >= 0 ? block : Truncate(block, 4000));
+            // Always cap: CLIs sometimes print diffs/logs after the summary
+            // block, and FullText feeds the next run's prompt (resume context) —
+            // unbounded text ballooned prompts past the OS command-line limit.
+            FullText: Truncate(block, 4000));
     }
 
     private static string Truncate(string s, int max) =>

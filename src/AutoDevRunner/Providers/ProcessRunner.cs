@@ -20,7 +20,8 @@ public class ProcessRunner
         string workingDirectory,
         TimeSpan timeout,
         Action<string>? onOutput = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? stdin = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -29,11 +30,14 @@ public class ProcessRunner
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = stdin is not null,
             UseShellExecute = false,
             CreateNoWindow = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8
         };
+        if (stdin is not null)
+            psi.StandardInputEncoding = Encoding.UTF8;
 
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var stdout = new StringBuilder();
@@ -63,6 +67,20 @@ public class ProcessRunner
 
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
+
+        if (stdin is not null)
+        {
+            try
+            {
+                await process.StandardInput.WriteAsync(stdin);
+                process.StandardInput.Close(); // EOF so the CLI stops reading
+            }
+            catch (IOException)
+            {
+                // Process may have exited before consuming stdin; the exit
+                // code/output classification below reports what happened.
+            }
+        }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);

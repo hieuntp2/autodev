@@ -28,11 +28,15 @@ public abstract class CliProviderBase : IAiProvider
         Action<string>? onOutput = null,
         CancellationToken ct = default)
     {
-        // Two ways to hand the prompt to the CLI, chosen by the args template:
-        //   {PROMPT}      -> inline (escaped). Simple, but limited by OS arg length.
-        //   {PROMPT_FILE} -> path to a temp file holding the prompt. Robust for
-        //                    large briefs; the CLI reads it (e.g. `codex exec < file`).
+        // Three ways to hand the prompt to the CLI, chosen by the args template:
+        //   no placeholder -> stdin (default). No OS arg-length limit — required:
+        //                     prompts with brief + creative plan + resume context
+        //                     can exceed the 32K Windows command-line cap.
+        //   {PROMPT}      -> inline (escaped). Simple, but limited by arg length.
+        //   {PROMPT_FILE} -> path to a temp file holding the prompt, for CLIs
+        //                    that take a file path argument.
         string? promptFile = null;
+        string? stdin = null;
         string arguments;
 
         if (_options.Arguments.Contains("{PROMPT_FILE}"))
@@ -41,16 +45,21 @@ public abstract class CliProviderBase : IAiProvider
             await File.WriteAllTextAsync(promptFile, prompt, ct);
             arguments = _options.Arguments.Replace("{PROMPT_FILE}", $"\"{promptFile}\"");
         }
-        else
+        else if (_options.Arguments.Contains("{PROMPT}"))
         {
             arguments = _options.Arguments.Replace("{PROMPT}", EscapeForArg(prompt));
+        }
+        else
+        {
+            arguments = _options.Arguments;
+            stdin = prompt;
         }
 
         ProcessResult result;
         try
         {
             result = await _runner.RunAsync(
-                _options.Command, arguments, workingDirectory, timeout, onOutput, ct);
+                _options.Command, arguments, workingDirectory, timeout, onOutput, ct, stdin);
         }
         finally
         {
