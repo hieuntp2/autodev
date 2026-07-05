@@ -1,0 +1,106 @@
+<!--
+  AutoDev Runner — EmailJS notification template
+  ================================================
+  Paste the markup below into the EmailJS dashboard:
+    Email Templates → (your template) → "Content" tab → switch to "Code Editor".
+
+  Variables sent by EmailService.SendAsync (src/AutoDevRunner/Services/EmailService.cs):
+    {{subject}}   e.g. "[AutoDev] MyProject — Success"
+    {{message}}   the full plain-text run report (multi-line; kept as-is via white-space:pre-wrap)
+    {{to_email}}  recipient address
+    {{project}}   project name
+    {{status}}    Success | Paused | Failed | QuotaLimit | AuthError | ...
+
+  EmailJS template settings (fill these in the "Settings"/header fields, NOT in this body):
+    Subject   : {{subject}}
+    To Email  : {{to_email}}
+    From Name : AutoDev Runner   (or your choice)
+    Reply To  : (optional)
+
+  Notes:
+    - {{message}} is HTML-escaped by EmailJS and rendered inside a <pre> so line breaks survive.
+    - Table + inline-style layout is used for broad email-client compatibility.
+    - Status color is driven by CSS classes below; EmailJS Handlebars can't compare strings,
+      so the badge uses one neutral accent. Adjust in the dashboard per template if desired.
+-->
+<div style="margin:0;padding:0;background-color:#f4f5f7;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="background-color:#f4f5f7;padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"
+               style="width:600px;max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;
+                      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                      box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#1f2937;padding:20px 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="color:#ffffff;font-size:18px;font-weight:600;line-height:1.3;">
+                    🤖 AutoDev Runner
+                  </td>
+                  <td align="right">
+                    <span style="display:inline-block;padding:5px 12px;border-radius:999px;
+                                 background-color:#374151;color:#e5e7eb;font-size:12px;font-weight:600;
+                                 letter-spacing:0.4px;text-transform:uppercase;">
+                      {{status}}
+                    </span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Sub-header / project -->
+          <tr>
+            <td style="padding:24px 28px 8px 28px;">
+              <div style="color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">
+                Project
+              </div>
+              <div style="color:#111827;font-size:20px;font-weight:700;margin-top:2px;">
+                {{project}}
+              </div>
+              <div style="color:#6b7280;font-size:14px;margin-top:6px;">
+                {{subject}}
+              </div>
+            </td>
+          </tr>
+
+          <!-- Divider -->
+          <tr>
+            <td style="padding:12px 28px 0 28px;">
+              <div style="border-top:1px solid #e5e7eb;"></div>
+            </td>
+          </tr>
+
+          <!-- Report body -->
+          <tr>
+            <td style="padding:16px 28px 8px 28px;">
+              <div style="color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
+                Run report
+              </div>
+              <pre style="margin:0;padding:16px;background-color:#0f172a;color:#e2e8f0;border-radius:6px;
+                          font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+                          font-size:12.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;
+                          overflow-x:auto;">{{message}}</pre>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:16px 28px 28px 28px;">
+              <div style="border-top:1px solid #e5e7eb;padding-top:16px;color:#9ca3af;font-size:12px;line-height:1.5;">
+                This is an automated notification from the AutoDev Runner for
+                <strong style="color:#6b7280;">{{project}}</strong>.<br>
+                Sent to {{to_email}}.
+              </div>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</div>
