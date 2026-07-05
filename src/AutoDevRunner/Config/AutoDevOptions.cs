@@ -8,6 +8,34 @@ public class AutoDevOptions
     public ProvidersOptions Providers { get; set; } = new();
     public EmailOptions Email { get; set; } = new();
     public PlannerOptions Planner { get; set; } = new();
+    public ContinuousOptions Continuous { get; set; } = new();
+}
+
+/// <summary>
+/// Continuous mode: instead of one run per trigger, keep running back-to-back
+/// (each run auto-commits per project policy) while at least one provider is
+/// still viable, i.e. its known quota usage is below <see cref="MaxUsagePercent"/>
+/// and it has not just reported a quota/rate limit. Codex usage is read from
+/// its local session files (5h + weekly windows); Claude has no headless usage
+/// API, so it is assumed viable until it reports a quota error.
+/// </summary>
+public class ContinuousOptions
+{
+    /// <summary>When true, `--run-due` loops until no provider is viable.</summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>Stop using a provider once its usage reaches this percentage.</summary>
+    public double MaxUsagePercent { get; set; } = 95;
+
+    /// <summary>Safety cap on back-to-back runs per invocation.</summary>
+    public int MaxRunsPerSession { get; set; } = 24;
+
+    /// <summary>Pause between consecutive runs.</summary>
+    public int DelayBetweenRunsSeconds { get; set; } = 20;
+
+    /// <summary>How long to bench a provider after it reports a quota error
+    /// (used when no exact reset time is known).</summary>
+    public int QuotaCooldownMinutes { get; set; } = 60;
 }
 
 /// <summary>

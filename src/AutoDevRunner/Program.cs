@@ -52,6 +52,9 @@ builder.Services.AddSingleton<EmailService>();
 builder.Services.AddSingleton<RunLock>();
 builder.Services.AddSingleton<RunLauncher>();
 builder.Services.AddSingleton<DueProjectsRunner>();
+builder.Services.AddSingleton<ProviderAvailability>();
+builder.Services.AddSingleton<CodexUsageReader>();
+builder.Services.AddSingleton<ContinuousRunner>();
 
 // ---- Providers ----
 builder.Services.AddSingleton<IAiProvider, CodexCliProvider>();
@@ -84,8 +87,16 @@ using (var scope = app.Services.CreateScope())
 // ---- One-shot run mode (Windows Task Scheduler) ----
 if (runOnce)
 {
-    var runner = app.Services.GetRequiredService<DueProjectsRunner>();
-    await runner.RunAllDueAsync();
+    if (autoDevOptions.Continuous.Enabled)
+    {
+        // Continuous: loop run → commit → usage check → run again, until every
+        // provider hits the usage ceiling (or the safety cap).
+        await app.Services.GetRequiredService<ContinuousRunner>().RunAsync();
+    }
+    else
+    {
+        await app.Services.GetRequiredService<DueProjectsRunner>().RunAllDueAsync();
+    }
     return;
 }
 

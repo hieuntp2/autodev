@@ -122,6 +122,34 @@ Báo cáo được gửi bằng cách POST tới EmailJS REST API — không c�
 4. Điền `ServiceId`, `TemplateId`, `PublicKey`, `PrivateKey`, `ToEmail` và đặt
    `Enabled: true`.
 
+### Chế độ chạy liên tục (`AutoDev:Continuous`)
+
+Khi `Continuous:Enabled = true`, mỗi lần task `--run-due` kích hoạt sẽ **không chỉ
+chạy một run** mà lặp: *kiểm tra khả thi → run (tự commit theo policy) → kiểm tra
+lại → run tiếp*, đến khi không còn provider nào khả thi hoặc chạm `MaxRunsPerSession`.
+
+Kiểm tra khả thi từng provider:
+
+- **Codex**: đọc usage thật (cửa sổ 5h + weekly, `used_percent` và giờ reset) từ
+  session files `~/.codex/sessions/`. Chạm `MaxUsagePercent` (mặc định **95%**) →
+  provider bị "bench" đến giờ reset của cửa sổ đang bận nhất.
+- **Claude**: không có API usage headless → coi là khả thi cho đến khi CLI báo lỗi
+  quota, khi đó bench `QuotaCooldownMinutes` (mặc định 60′).
+
+Provider bị bench sẽ bị bỏ qua ở run kế tiếp (không đốt thêm quota); hết provider
+khả thi thì loop thoát — lần kích hoạt kế tiếp của Task Scheduler (mỗi N giờ) sẽ
+tự thử lại. Log ghi rõ verdict mỗi vòng: `Codex: viable (5h 16% ..., weekly 41% ...)`.
+
+```jsonc
+"Continuous": {
+  "Enabled": true,
+  "MaxUsagePercent": 95,        // trần usage
+  "MaxRunsPerSession": 24,      // chốt an toàn số run mỗi lần kích hoạt
+  "DelayBetweenRunsSeconds": 20,
+  "QuotaCooldownMinutes": 60    // thời gian bench khi không biết giờ reset
+}
+```
+
 ### Creative planner + knowledge base (OpenAI)
 
 Trước mỗi lần chạy, nếu `AutoDev:Planner:Enabled = true`, runner gọi **một lần**

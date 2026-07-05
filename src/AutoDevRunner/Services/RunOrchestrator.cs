@@ -25,6 +25,7 @@ public class RunOrchestrator
     private readonly SummaryParser _summaryParser;
     private readonly EmailService _email;
     private readonly ProviderRegistry _providers;
+    private readonly ProviderAvailability _availability;
     private readonly ProcessRunner _proc;
     private readonly RunLock _lock;
     private readonly AutoDevOptions _opt;
@@ -34,12 +35,14 @@ public class RunOrchestrator
         AppDbContext db, GitService git, GuardrailService guard,
         PromptBuilder promptBuilder, OpenAiCreativePlanner planner,
         SummaryParser summaryParser, EmailService email,
-        ProviderRegistry providers, ProcessRunner proc, RunLock runLock,
+        ProviderRegistry providers, ProviderAvailability availability,
+        ProcessRunner proc, RunLock runLock,
         IOptions<AutoDevOptions> opt, ILogger<RunOrchestrator> log)
     {
         _db = db; _git = git; _guard = guard; _promptBuilder = promptBuilder;
         _planner = planner; _summaryParser = summaryParser; _email = email;
-        _providers = providers; _proc = proc; _lock = runLock; _opt = opt.Value; _log = log;
+        _providers = providers; _availability = availability;
+        _proc = proc; _lock = runLock; _opt = opt.Value; _log = log;
     }
 
     public async Task<RunRecord?> RunProjectAsync(int projectId, CancellationToken ct = default)
@@ -124,12 +127,27 @@ public class RunOrchestrator
 
             foreach (var provider in order)
             {
+                // Benched providers (quota ceiling reached / recent quota error)
+                // are skipped so they are not burned further.
+                if (!_availability.IsAvailable(provider.Kind, out var benchedWhy))
+                {
+                    Log($"Skipping {provider.Kind}: {benchedWhy}");
+                    continue;
+                }
+
                 run.Provider = provider.Kind;
                 Log($"--- Invoking {provider.Kind} (timeout {timeout.TotalMinutes:0}m) ---");
                 _log.LogInformation("Project {Name}: invoking {Provider}", project.Name, provider.Kind);
 
                 invocation = await provider.RunAsync(prompt, project.RepoPath, timeout, Log, ct);
                 await UpdateProviderStateAsync(provider.Kind, invocation, ct);
+
+                if (invocation.Outcome is ProviderOutcome.QuotaLimit)
+                {
+                    _availability.Suspend(provider.Kind,
+                        DateTimeOffset.Now.AddMinutes(Math.Max(1, _opt.Continuous.QuotaCooldownMinutes)),
+                        invocation.Reason ?? "provider reported quota/rate limit");
+                }
 
                 // Success ends the run. Any failure (quota/auth/timeout/error) falls
                 // through to the next provider in the priority order, if any.
@@ -139,7 +157,14 @@ public class RunOrchestrator
                 Log($"{provider.Kind} returned {invocation.Outcome}: {invocation.Reason}");
             }
 
-            run.Usage = invocation!.Usage ?? "Unknown / provider does not expose usage";
+            if (invocation is null)
+            {
+                await FailAsync(project, run, RunStatus.Failed,
+                    "All providers are currently benched (quota ceiling / cooldown).", logBuffer, null, ct);
+                return run;
+            }
+
+            run.Usage = invocation.Usage ?? "Unknown / provider does not expose usage";
             if (!string.IsNullOrWhiteSpace(invocation.SessionId))
                 project.ProviderSessionId = invocation.SessionId;
 
