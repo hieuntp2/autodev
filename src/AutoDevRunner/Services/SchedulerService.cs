@@ -12,13 +12,17 @@ namespace AutoDevRunner.Services;
 public class SchedulerService : BackgroundService
 {
     private readonly DueProjectsRunner _runner;
+    private readonly ContinuousRunner _continuous;
     private readonly SchedulerOptions _opt;
+    private readonly bool _continuousEnabled;
     private readonly ILogger<SchedulerService> _log;
 
-    public SchedulerService(DueProjectsRunner runner, IOptions<AutoDevOptions> opt, ILogger<SchedulerService> log)
+    public SchedulerService(DueProjectsRunner runner, ContinuousRunner continuous, IOptions<AutoDevOptions> opt, ILogger<SchedulerService> log)
     {
         _runner = runner;
+        _continuous = continuous;
         _opt = opt.Value.Scheduler;
+        _continuousEnabled = opt.Value.Continuous.Enabled;
         _log = log;
     }
 
@@ -37,7 +41,11 @@ public class SchedulerService : BackgroundService
 
     private async Task SafeRun(CancellationToken ct)
     {
-        try { await _runner.RunAllDueAsync(ct); }
+        try
+        {
+            if (_continuousEnabled) await _continuous.RunAsync(ct);
+            else await _runner.RunAllDueAsync(ct);
+        }
         catch (OperationCanceledException) { /* shutting down */ }
         catch (Exception ex) { _log.LogError(ex, "Scheduler tick failed."); }
     }

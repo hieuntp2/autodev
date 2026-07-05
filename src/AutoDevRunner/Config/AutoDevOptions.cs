@@ -9,6 +9,70 @@ public class AutoDevOptions
     public EmailOptions Email { get; set; } = new();
     public PlannerOptions Planner { get; set; } = new();
     public ContinuousOptions Continuous { get; set; } = new();
+    public SkillsOptions Skills { get; set; } = new();
+    public ProjectMemoryOptions ProjectMemory { get; set; } = new();
+    public RiskOptions Risk { get; set; } = new();
+}
+
+/// <summary>Controls whether AutoDev writes back to a project's memory files.</summary>
+public class ProjectMemoryOptions
+{
+    /// <summary>
+    /// When true, after a run AutoDev appends the run's ideas/decisions/next tasks
+    /// into <c>.ai-runner/IDEAS.md</c>, <c>DECISIONS.md</c> and <c>BACKLOG.md</c>
+    /// (deduplicated, dated). When false (default) it only records them in the run
+    /// log and never edits the project's memory files.
+    /// </summary>
+    public bool AutoWriteEnabled { get; set; } = false;
+}
+
+/// <summary>Controls autonomous handling of risky tasks.</summary>
+public class RiskOptions
+{
+    /// <summary>
+    /// When false (default), a run whose task is classified <c>Risky</c> (DB
+    /// migration, mass deletion, deploy/production, secret/config edits, large
+    /// refactor) is NOT executed autonomously — it is blocked and reported as
+    /// requiring manual approval/config. When true, risky runs proceed.
+    /// </summary>
+    public bool AllowRiskyAutonomousRuns { get; set; } = false;
+}
+
+/// <summary>
+/// Global AutoDev skill system. Skills live once in a shared store
+/// (<c>AutoDevSkills/</c>) and are selected per run by keyword-matching the
+/// project brief / notes / task / creative plan against each skill's triggers.
+/// The selected skill is injected explicitly into the CLI prompt.
+/// </summary>
+public class SkillsOptions
+{
+    /// <summary>Master switch for the whole skill system.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Path to the global skill store. Absolute wins; a relative path is tried
+    /// against the app base dir and the current dir. When empty, the registry
+    /// auto-discovers an "AutoDevSkills" folder by walking up from those roots.
+    /// </summary>
+    public string Root { get; set; } = string.Empty;
+
+    /// <summary>Skill ids force-disabled by config (in addition to the runtime toggle).</summary>
+    public List<string> Disabled { get; set; } = new();
+
+    /// <summary>
+    /// When true, keyword-matching auto-selects skills for a run. When false,
+    /// skills are only used if a project explicitly names one (future use).
+    /// </summary>
+    public bool AutoSelect { get; set; } = true;
+
+    /// <summary>
+    /// Optionally copy the selected skill into <c>&lt;repo&gt;/.agents/skills/&lt;id&gt;</c>
+    /// so a CLI that discovers skills from the working tree can see it. The copy
+    /// is added to the repo's local git exclude so it is never committed. Off by
+    /// default: the skill is normally injected into the prompt with absolute
+    /// script paths instead, keeping project repos clean.
+    /// </summary>
+    public bool ExportToProject { get; set; } = false;
 }
 
 /// <summary>

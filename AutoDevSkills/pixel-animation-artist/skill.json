@@ -1,0 +1,43 @@
+{
+  "id": "pixel-animation-artist",
+  "name": "Pixel Animation Artist",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "Generates deterministic pixel-art animations: per-frame PNGs, a sprite sheet, a nearest-neighbour GIF preview, and a JSON manifest that drives frame order, per-frame duration, sprite motion/tween, timeline events, loop, priority and interruptibility. No anti-aliasing, blur or gradients.",
+  "invocationHint": "Use $pixel-animation-artist to generate a deterministic pixel animation (PNG frames + sprite sheet + GIF preview + animation.json manifest).",
+  "triggers": [
+    "pixel animation",
+    "pixel art",
+    "sprite sheet",
+    "spritesheet",
+    "pet animation",
+    "pixel pet",
+    "64x32",
+    "64x32 frames",
+    "gif preview",
+    "animation json",
+    "animation manifest",
+    "ui avatar",
+    "avatar animation",
+    "frame animation",
+    "sprite animation"
+  ],
+  "entrypoints": {
+    "generate": "scripts/draw_pixel_animation.py",
+    "validate": "scripts/validate_pixel_animation.py"
+  },
+  "runtime": {
+    "language": "python",
+    "requires": "Pillow (pip install -r requirements.txt)"
+  },
+  "outputConvention": [
+    "Write generated assets under the TARGET PROJECT (never back into AutoDevSkills/).",
+    "Recommended layout: assets/<domain>/animations/<id>/",
+    "  frames/frame_000.png, frames/frame_001.png, ...",
+    "  <id>_sheet.png",
+    "  <id>_preview.gif",
+    "  <id>.animation.json"
+  ],
+  "docs": "SKILL.md",
+  "schema": "schema/animation.schema.json"
+}

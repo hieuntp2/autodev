@@ -10,6 +10,7 @@ public class AppDbContext : DbContext
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<RunRecord> Runs => Set<RunRecord>();
     public DbSet<ProviderState> ProviderStates => Set<ProviderState>();
+    public DbSet<ProjectBrief> ProjectBriefs => Set<ProjectBrief>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -20,6 +21,15 @@ public class AppDbContext : DbContext
             .HasForeignKey(r => r.ProjectId)
             .OnDelete(DeleteBehavior.Cascade);
         b.Entity<ProviderState>().HasIndex(p => p.Provider).IsUnique();
+
+        // Append-only brief versions; one row per (project, version).
+        b.Entity<ProjectBrief>()
+            .HasOne(br => br.Project)
+            .WithMany(p => p.Briefs)
+            .HasForeignKey(br => br.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ProjectBrief>().HasIndex(br => new { br.ProjectId, br.Version }).IsUnique();
+        b.Entity<ProjectBrief>().Property(br => br.Author).HasConversion<string>();
 
         // Store enums as strings for readable DB rows.
         b.Entity<Project>().Property(p => p.LastRunStatus).HasConversion<string>();

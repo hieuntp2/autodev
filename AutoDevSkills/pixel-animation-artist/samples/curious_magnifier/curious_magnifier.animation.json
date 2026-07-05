@@ -1,0 +1,100 @@
+{
+  "id": "curious_magnifier",
+  "spriteSheet": "curious_magnifier_sheet.png",
+  "frameWidth": 64,
+  "frameHeight": 32,
+  "columns": 8,
+  "rows": 1,
+  "loop": true,
+  "priority": 20,
+  "interruptible": true,
+  "frames": [
+    {
+      "index": 0,
+      "durationMs": 110
+    },
+    {
+      "index": 1,
+      "durationMs": 110
+    },
+    {
+      "index": 2,
+      "durationMs": 110
+    },
+    {
+      "index": 3,
+      "durationMs": 140
+    },
+    {
+      "index": 4,
+      "durationMs": 160
+    },
+    {
+      "index": 5,
+      "durationMs": 140
+    },
+    {
+      "index": 6,
+      "durationMs": 110
+    },
+    {
+      "index": 7,
+      "durationMs": 110
+    }
+  ],
+  "motion": [
+    {
+      "timeMs": 0,
+      "x": 0,
+      "y": 0,
+      "scale": 1.0,
+      "rotation": 0,
+      "alpha": 1.0,
+      "easing": "easeInOut"
+    },
+    {
+      "timeMs": 300,
+      "x": 0,
+      "y": -2,
+      "scale": 1.0,
+      "rotation": -4,
+      "alpha": 1.0,
+      "easing": "easeOut"
+    },
+    {
+      "timeMs": 600,
+      "x": 1,
+      "y": 0,
+      "scale": 1.05,
+      "rotation": 3,
+      "alpha": 1.0,
+      "easing": "easeInOut"
+    },
+    {
+      "timeMs": 990,
+      "x": 0,
+      "y": 0,
+      "scale": 1.0,
+      "rotation": 0,
+      "alpha": 1.0,
+      "easing": "easeInOut"
+    }
+  ],
+  "events": [
+    {
+      "timeMs": 330,
+      "type": "sound",
+      "value": "curious_pop.wav"
+    },
+    {
+      "timeMs": 330,
+      "type": "effect",
+      "value": "question_mark"
+    },
+    {
+      "timeMs": 950,
+      "type": "callback",
+      "value": "curious_loop_end"
+    }
+  ]
+}

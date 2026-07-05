@@ -39,6 +39,27 @@ $RunTaskName  = "AutoDevRunner-Run"
 $DashTaskName = "AutoDevRunner-Dashboard"
 $proj = Join-Path $PSScriptRoot "..\src\AutoDevRunner\AutoDevRunner.csproj"
 
+# --- 0. Force-stop any running instance so publish files / DB aren't locked ---
+#     The dashboard task keeps AutoDevRunner.exe running out of the publish folder;
+#     without this, `dotnet publish` fails with a file-in-use error.
+function Stop-AutoDev {
+    foreach ($name in @($RunTaskName, $DashTaskName)) {
+        if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) {
+            try { Stop-ScheduledTask -TaskName $name -ErrorAction Stop } catch {}
+        }
+    }
+    $procs = Get-Process -Name "AutoDevRunner" -ErrorAction SilentlyContinue
+    if ($procs) {
+        Write-Host "Force-stopping running AutoDevRunner process(es)..." -ForegroundColor Yellow
+        $procs | Stop-Process -Force -ErrorAction SilentlyContinue
+        # Wait (bounded) for file handles to release before we overwrite the exe.
+        for ($i = 0; $i -lt 20 -and (Get-Process -Name "AutoDevRunner" -ErrorAction SilentlyContinue); $i++) {
+            Start-Sleep -Milliseconds 250
+        }
+    }
+}
+Stop-AutoDev
+
 # --- 1. Build / publish (framework-dependent; requires .NET 8 runtime present) ---
 if (-not $SkipBuild) {
     Write-Host "Publishing AutoDev Runner (Release, win-x64)..." -ForegroundColor Cyan

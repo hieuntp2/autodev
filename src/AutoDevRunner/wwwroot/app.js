@@ -117,6 +117,7 @@ views.projects = async () => {
           <button class="sm" data-act="${p.paused ? "resume" : "pause"}" data-id="${p.id}">${p.paused ? "Resume" : "Pause"}</button>
           <button class="sm" data-act="${p.enabled ? "disable" : "enable"}" data-id="${p.id}">${p.enabled ? "Disable" : "Enable"}</button>
           <button class="sm" data-act="edit" data-id="${p.id}">Edit</button>
+          <button class="sm danger" data-act="delete" data-id="${p.id}">Delete</button>
         </td>
       </tr>`).join("")}
     </tbody></table>`}
@@ -128,7 +129,13 @@ views.projects = async () => {
 
 async function projectAction(act, id) {
   try {
-    if (act === "edit") { const d = await api(`/projects/${id}`); return openProjectModal(d.project); }
+    if (act === "edit") { const d = await api(`/projects/${id}`); return openProjectModal(d.project, d.brief ? d.brief.content : ""); }
+    if (act === "delete") {
+      if (!confirm("Delete this project and its run history?")) return;
+      await api(`/projects/${id}`, { method: "DELETE" });
+      toast("Deleted.");
+      return render();
+    }
     if (act === "run") {
       await api(`/projects/${id}/run`, { method: "POST" });
       toast("Run started.");
@@ -140,10 +147,52 @@ async function projectAction(act, id) {
   } catch (e) { toast(e.message, true); }
 }
 
+// ---- lifecycle / artifact helpers ----
+const LIFECYCLE = ["Idea","Candidate","Planned","Running","Validated","Committed","Reported","Learned"];
+function lifecycleTrack(stage) {
+  if (stage === "Failed") return `<span class="badge Failed">Failed</span>`;
+  const at = LIFECYCLE.indexOf(stage);
+  return `<div class="track">${LIFECYCLE.map((s,i) =>
+    `<span class="step ${i <= at && at >= 0 ? "done" : ""}" title="${esc(s)}">${esc(s)}</span>`).join("<span class=\"sep\">›</span>")}</div>`;
+}
+function nextTasksList(tasks) {
+  return (tasks && tasks.length)
+    ? `<ul class="next-tasks">${tasks.map(t => `<li>${esc(t)}</li>`).join("")}</ul>`
+    : "—";
+}
+function riskBadge(risk) {
+  const cls = risk === "Risky" ? "off" : (risk === "Safe" ? "on" : "");
+  return `<span class="badge ${cls}">${esc(risk || "—")}</span>`;
+}
+const PREVIEWABLE = new Set(["Frame","SpriteSheet","Gif","Image"]);
+function artifactGallery(projectId, artifacts) {
+  if (!artifacts || artifacts.length === 0) return `<p class="muted">No artifacts generated yet.</p>`;
+  return `<div class="artifacts">${artifacts.map(a => {
+    const url = `/api/projects/${projectId}/artifact?path=${encodeURIComponent(a.path)}`;
+    const media = PREVIEWABLE.has(a.kind)
+      ? `<img class="art-img" src="${url}" alt="${esc(a.path)}" loading="lazy">`
+      : `<div class="art-icon">${a.kind === "AnimationManifest" ? "🎬" : (a.kind === "Report" ? "📄" : "📦")}</div>`;
+    return `<figure class="art-card">
+      <a href="${url}" target="_blank" rel="noopener">${media}</a>
+      <figcaption>
+        <span class="badge">${esc(a.kind)}</span>
+        <span class="mono art-path" title="${esc(a.path)}">${esc(a.path.split("/").pop())}</span>
+        ${a.skillId ? `<span class="muted mono">$${esc(a.skillId)}</span>` : ""}
+      </figcaption>
+    </figure>`;
+  }).join("")}</div>`;
+}
+
 // ---- Project detail ----
 views.projectDetail = async (id) => {
-  const d = await api(`/projects/${id}`);
+  const [d, goal, lifecycle, artifacts] = await Promise.all([
+    api(`/projects/${id}`),
+    api(`/projects/${id}/goal`).catch(() => null),
+    api(`/projects/${id}/lifecycle?take=8`).catch(() => []),
+    api(`/projects/${id}/artifacts`).catch(() => [])
+  ]);
   const p = d.project;
+  const latestMeta = (lifecycle && lifecycle[0]) || null;
   app.innerHTML = `
     <div class="toolbar">
       <h1>${esc(p.name)}</h1>
@@ -155,7 +204,8 @@ views.projectDetail = async (id) => {
     </div>
     <div class="detail-grid">
       <div class="k">Repo</div><div class="mono">${esc(p.repoPath)}</div>
-      <div class="k">Brief</div><div class="mono">${esc(p.briefPath)}</div>
+      <div class="k">Target platform</div><div>${p.projectType ? esc(p.projectType) : `<span class="muted">— (not enforced)</span>`}</div>
+      <div class="k">AI may evolve brief</div><div>${p.allowAiEditBrief ? badge("on") : badge("off")}</div>
       <div class="k">Enabled</div><div>${p.enabled ? badge("on") : badge("off")} ${p.paused ? badge("Paused") : ""}</div>
       <div class="k">Priority</div><div>${p.priority}</div>
       <div class="k">Providers</div><div>${esc(p.providerPriority)}</div>
@@ -168,6 +218,33 @@ views.projectDetail = async (id) => {
       <div class="k">Last status</div><div>${p.lastRunStatus ? badge(p.lastRunStatus) : "—"} <span class="muted">${fmt(p.lastRunAt)}</span></div>
       ${p.lastError ? `<div class="k">Last error</div><div class="muted">${esc(p.lastError)}</div>` : ""}
     </div>
+
+    <h2>Project goal <span class="muted">${goal && goal.hasGoal ? badge("on") : badge("off")}</span></h2>
+    ${goal && goal.hasGoal
+      ? `<pre class="goal">${esc((goal.goal || "").slice(0, 1200))}</pre>`
+      : `<p class="muted">No <span class="mono">.ai-runner/PROJECT_GOAL.md</span> yet. Add one so runs are goal-directed.</p>`}
+    ${goal ? `<div class="goal-files">${Object.entries(goal.files).map(([f,ok]) =>
+        `<span class="badge ${ok ? "on" : "off"}">${esc(f)}</span>`).join(" ")}</div>` : ""}
+
+    <h2>Brief <span class="muted">${d.brief ? `v${d.brief.version} · ${esc(d.brief.author)} · ${fmt(d.brief.createdAt)}` : badge("off")}</span>
+        ${d.brief ? `<button class="sm" id="briefHistory" style="margin-left:8px">History</button>` : ""}</h2>
+    ${d.brief
+      ? `<pre class="goal">${esc((d.brief.content || "").slice(0, 2000))}</pre>`
+      : `<p class="muted">No brief stored yet. Click <strong>Edit</strong> to write one (or it will be seeded from the brief file on the first run).</p>`}
+    <div id="briefHistoryBox"></div>
+
+    <h2>Task lifecycle</h2>
+    ${latestMeta ? `
+      <div class="detail-grid">
+        <div class="k">Latest task</div><div>${esc(latestMeta.task || "—")}${latestMeta.taskSource ? ` <span class="muted">(${esc(latestMeta.taskSource)})</span>` : ""}</div>
+        <div class="k">Stage</div><div>${lifecycleTrack(latestMeta.stage)}</div>
+        <div class="k">Risk</div><div>${riskBadge(latestMeta.risk)}${(latestMeta.riskReasons||[]).length ? ` <span class="muted">${esc(latestMeta.riskReasons.join("; "))}</span>` : ""}</div>
+        <div class="k">Skills</div><div>${(latestMeta.skills||[]).map(s => `<span class="mono">$${esc(s.id)}</span>`).join(", ") || "—"}</div>
+        <div class="k">Next suggested</div><div>${nextTasksList(latestMeta.nextSuggestedTasks)}</div>
+      </div>` : `<p class="muted">No lifecycle data yet (runs will populate it).</p>`}
+
+    <h2>Generated artifacts</h2>
+    ${artifactGallery(id, artifacts)}
 
     <h2>Notes</h2>
     <div class="field">
@@ -191,6 +268,17 @@ views.projectDetail = async (id) => {
     if (!confirm("Delete this project and its run history?")) return;
     try { await api(`/projects/${id}`, { method: "DELETE" }); toast("Deleted."); navigate("projects"); }
     catch (e) { toast(e.message, true); }
+  };
+  const bh = $("#briefHistory");
+  if (bh) bh.onclick = async () => {
+    const box = $("#briefHistoryBox");
+    if (box.innerHTML) { box.innerHTML = ""; return; }
+    try {
+      const versions = await api(`/projects/${id}/briefs`);
+      box.innerHTML = versions.map(v =>
+        `<details><summary>v${v.version} · <strong>${esc(v.author)}</strong> · ${fmt(v.createdAt)}${v.note ? ` · <span class="muted">${esc(v.note)}</span>` : ""}</summary><pre>${esc(v.content)}</pre></details>`
+      ).join("") || `<p class="muted">No history.</p>`;
+    } catch (e) { toast(e.message, true); }
   };
 };
 
@@ -237,8 +325,18 @@ views.runDetail = async (id) => {
       <div class="k">Commit</div><div class="mono">${esc(r.commitSha || "—")}</div>
       <div class="k">Validation</div><div>${d.validationRun ? (d.validationPassed ? badge("Success") : badge("Failed")) : "not run"}</div>
       ${r.reason ? `<div class="k">Reason</div><div class="muted">${esc(r.reason)}</div>` : ""}
+      ${d.meta ? `
+        <div class="k">Lifecycle</div><div>${lifecycleTrack(d.meta.stage)}</div>
+        <div class="k">Task</div><div>${esc(d.meta.task || "—")}${d.meta.taskSource ? ` <span class="muted">(${esc(d.meta.taskSource)})</span>` : ""}</div>
+        <div class="k">Risk</div><div>${riskBadge(d.meta.risk)}${(d.meta.riskReasons||[]).length ? ` <span class="muted">${esc(d.meta.riskReasons.join("; "))}</span>` : ""}</div>
+        <div class="k">Skills</div><div>${(d.meta.skills||[]).map(s => `<span class="mono">$${esc(s.id)}</span> <span class="muted">(${(s.matchedKeywords||[]).map(esc).join(", ")})</span>`).join("<br>") || "—"}</div>
+        <div class="k">Next suggested</div><div>${nextTasksList(d.meta.nextSuggestedTasks)}</div>
+        ${(d.meta.memoryUpdates||[]).length ? `<div class="k">Memory updated</div><div class="muted">${d.meta.memoryUpdates.map(esc).join(", ")}</div>` : ""}` : ""}
     </div>
+    ${d.meta && d.meta.artifacts && d.meta.artifacts.length ? `<h2>Generated artifacts</h2>${artifactGallery(r.projectId, d.meta.artifacts.map(a => ({path:a.path, kind:a.kind, skillId:a.skillId})))}` : ""}
     <h2>Summary</h2><pre>${esc(d.summary || "(none)")}</pre>
+    ${d.creativePlan ? `<details><summary><strong>Creative plan</strong> (from the knowledge-base planner)</summary><pre>${esc(d.creativePlan)}</pre></details>` : ""}
+    ${d.prompt ? `<details><summary><strong>Prompt sent to the provider</strong> (${d.prompt.length.toLocaleString()} chars)</summary><pre>${esc(d.prompt)}</pre></details>` : ""}
     <h2>Changed files</h2><pre>${esc(d.changedFiles || "(none)")}</pre>
     ${d.validationOutput ? `<h2>Validation output</h2><pre>${esc(d.validationOutput)}</pre>` : ""}
     <h2>Log <button class="sm" id="loadlog">Load full log</button></h2>
@@ -255,6 +353,51 @@ views.runDetail = async (id) => {
 views.providers = async () => {
   const providers = await api("/providers");
   app.innerHTML = `<h1>Providers</h1>${providerTable(providers)}`;
+};
+
+// ---- Skills (global skill store) ----
+views.skills = async () => {
+  const [skills, log] = await Promise.all([api("/skills"), api("/skills/log")]);
+  app.innerHTML = `
+    <div class="toolbar"><h1>Skills</h1><button class="sm" id="reload">Reload from disk</button></div>
+    <p class="muted">Global skills shared across all projects. AutoDev auto-selects a skill when a task
+      matches its trigger keywords, and injects it explicitly into the run prompt.</p>
+    ${skills.length === 0 ? `<p class="muted">No skills found. Check <span class="mono">AutoDevSkills/</span>.</p>` : `
+    <table><thead><tr>
+      <th>Skill</th><th>Version</th><th>Status</th><th>Triggers</th><th></th>
+    </tr></thead><tbody>
+      ${skills.map(s => `<tr>
+        <td><strong>${esc(s.name)}</strong> <span class="mono muted">$${esc(s.id)}</span>
+            <div class="muted">${esc(s.description)}</div>
+            <div class="muted mono" style="font-size:11px">${esc(s.sourcePath)}</div></td>
+        <td>${esc(s.version || "—")}</td>
+        <td>${s.enabled ? badge("on") : badge("off")}</td>
+        <td class="muted">${(s.triggers || []).map(esc).join(", ")}</td>
+        <td class="actions">
+          <button class="sm" data-skill="${esc(s.id)}" data-act="${s.enabled ? "disable" : "enable"}">${s.enabled ? "Disable" : "Enable"}</button>
+        </td>
+      </tr>`).join("")}
+    </tbody></table>`}
+    <h2>Recent skill selections</h2>
+    ${log.length === 0 ? `<p class="muted">No skill has been selected for a run yet.</p>` : `
+    <table><thead><tr><th>When</th><th>Skill</th><th>Project</th><th>Matched keywords</th><th>Task</th></tr></thead><tbody>
+      ${log.map(l => `<tr>
+        <td>${fmt(l.selectedAt)}</td>
+        <td class="mono">${esc(l.skillId)}</td>
+        <td>${esc(l.projectName)}</td>
+        <td class="muted">${(l.matchedKeywords || []).map(esc).join(", ")}</td>
+        <td class="muted">${esc((l.task || "—").slice(0, 60))}</td>
+      </tr>`).join("")}
+    </tbody></table>`}
+  `;
+  $("#reload").onclick = async () => {
+    try { const r = await api("/skills/reload", { method: "POST" }); toast(`Reloaded ${r.count} skill(s).`); render(); }
+    catch (e) { toast(e.message, true); }
+  };
+  app.querySelectorAll("button[data-skill]").forEach(b => b.onclick = async () => {
+    try { await api(`/skills/${encodeURIComponent(b.dataset.skill)}/${b.dataset.act}`, { method: "POST" }); toast("Updated."); render(); }
+    catch (e) { toast(e.message, true); }
+  });
 };
 
 // ---- Settings (read-only config view) ----
@@ -285,7 +428,7 @@ views.settings = async () => {
 
 // ---- Project modal ----
 const modal = $("#modal");
-function openProjectModal(p) {
+function openProjectModal(p, briefContent) {
   const isEdit = !!p;
   p = p || {};
   $("#modal-title").textContent = isEdit ? `Edit ${p.name}` : "New project";
@@ -298,7 +441,19 @@ function openProjectModal(p) {
       </div>
       <div id="folder-browser" class="folder-browser hidden"></div>
     </div>
-    <div class="field"><label>Brief file</label><input type="text" id="f-brief" value="${esc(p.briefPath || "ai-autonomous.md")}"></div>
+    <div class="field"><label>Brief / product prompt</label>
+      <textarea id="f-brief-content" rows="8" placeholder="Describe the product goal the AI should build toward. Stored in the database and versioned — every edit keeps history.">${esc(briefContent || "")}</textarea>
+      <div class="muted" style="font-size:11px">Stored in the DB (versioned). The planner always uses the latest version.</div>
+    </div>
+    <div class="field row"><input type="checkbox" id="f-aiedit" ${p.allowAiEditBrief ? "checked" : ""}><label>Allow AI to evolve this brief (saved as new versions)</label></div>
+    <details style="margin-bottom:12px"><summary class="muted">Advanced: seed file (fallback)</summary>
+      <div class="field"><label>Brief file path</label><input type="text" id="f-brief" value="${esc(p.briefPath || "ai-autonomous.md")}">
+      <div class="muted" style="font-size:11px">Only used to seed version 1 if no brief is stored yet.</div></div>
+    </details>
+    <div class="field"><label>Target platform / stack</label>
+      <input type="text" id="f-type" value="${esc(p.projectType || "")}" placeholder="e.g. Android (Kotlin/Jetpack Compose)">
+      <div class="muted" style="font-size:11px">Enforced as a hard constraint so the agent can't reimplement on another stack (e.g. HTML web). Leave blank to let it infer.</div>
+    </div>
     <div class="grid2">
       <div class="field"><label>Priority</label><input type="number" id="f-prio" value="${p.priority ?? 0}"></div>
       <div class="field"><label>Max run minutes</label><input type="number" id="f-max" value="${p.maxRunMinutes ?? 30}"></div>
@@ -325,6 +480,8 @@ function openProjectModal(p) {
       name: $("#f-name").value.trim(),
       repoPath: $("#f-repo").value.trim(),
       briefPath: $("#f-brief").value.trim(),
+      brief: $("#f-brief-content").value,
+      projectType: $("#f-type").value.trim(),
       priority: +$("#f-prio").value,
       maxRunMinutes: +$("#f-max").value,
       providerPriority: $("#f-prov").value.trim(),
@@ -332,6 +489,7 @@ function openProjectModal(p) {
       autoCommit: $("#f-commit").checked,
       autoPush: $("#f-push").checked,
       allowRunOnMainBranch: $("#f-main").checked,
+      allowAiEditBrief: $("#f-aiedit").checked,
       enabled: $("#f-enabled").checked,
       notes: $("#f-notes").value
     };

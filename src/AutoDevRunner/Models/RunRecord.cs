@@ -37,4 +37,24 @@ public class RunRecord
 
     public bool EmailSent { get; set; }
     public string? CommitSha { get; set; }
+
+    // --- Reproducibility / evolution history (queryable in the DB, not just in files) ---
+
+    /// <summary>Short title of the task this run worked on.</summary>
+    public string? TaskTitle { get; set; }
+
+    /// <summary>Where the task came from: explicit | planner | proposal source.</summary>
+    public string? TaskSource { get; set; }
+
+    /// <summary>The full prompt sent to the provider this run. Lets us diff prompt evolution over time.</summary>
+    public string? Prompt { get; set; }
+
+    /// <summary>The OpenAI creative plan used this run (null if the planner was disabled/failed).</summary>
+    public string? CreativePlan { get; set; }
+
+    /// <summary>Lifecycle stage reached (Planned/Running/Validated/Committed/…). Mirror of the file sidecar.</summary>
+    public string? Stage { get; set; }
+
+    /// <summary>Assessed risk level for this run (Safe/Normal/Risky).</summary>
+    public string? Risk { get; set; }
 }

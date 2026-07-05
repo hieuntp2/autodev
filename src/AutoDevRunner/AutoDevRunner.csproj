@@ -17,4 +17,15 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
   </ItemGroup>
 
+  <!-- Ship the global skill store next to the exe (publish/AutoDevSkills) so the
+       SkillRegistry finds it at runtime and the CLI can run the skill scripts.
+       Sample output is excluded to keep the deploy lean; it stays in source. -->
+  <ItemGroup>
+    <Content Include="..\..\AutoDevSkills\**\*"
+             Exclude="..\..\AutoDevSkills\**\samples\**;..\..\AutoDevSkills\**\__pycache__\**">
+      <Link>AutoDevSkills\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

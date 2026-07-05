@@ -3,6 +3,7 @@ using AutoDevRunner.Config;
 using AutoDevRunner.Data;
 using AutoDevRunner.Models;
 using AutoDevRunner.Providers;
+using AutoDevRunner.Skills;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -28,8 +29,25 @@ public class RunOrchestrator
     private readonly ProviderAvailability _availability;
     private readonly ProcessRunner _proc;
     private readonly RunLock _lock;
+    private readonly SkillRegistry _skills;
+    private readonly SkillExporter _skillExporter;
+    private readonly ProjectGoalService _goals;
+    private readonly RiskAssessor _risk;
+    private readonly ArtifactTracker _artifacts;
+    private readonly ProjectMemoryWriter _memory;
+    private readonly RunMetadataStore _runMeta;
+    private readonly TaskProposer _proposer;
     private readonly AutoDevOptions _opt;
     private readonly ILogger<RunOrchestrator> _log;
+
+    // ---- Per-run state, recorded in the run's JSON sidecar (scoped instance) ----
+    private IReadOnlyList<SkillMatch> _selectedSkills = Array.Empty<SkillMatch>();
+    private LifecycleStage _stage = LifecycleStage.Planned;
+    private RiskAssessment _riskAssessment = new(RiskLevel.Normal, new());
+    private List<ArtifactRef> _trackedArtifacts = new();
+    private List<string> _memoryUpdates = new();
+    private List<string> _nextSuggestedTasks = new();
+    private string? _taskSource;
 
     public RunOrchestrator(
         AppDbContext db, GitService git, GuardrailService guard,
@@ -37,12 +55,17 @@ public class RunOrchestrator
         SummaryParser summaryParser, EmailService email,
         ProviderRegistry providers, ProviderAvailability availability,
         ProcessRunner proc, RunLock runLock,
+        SkillRegistry skills, SkillExporter skillExporter,
+        ProjectGoalService goals, RiskAssessor risk, ArtifactTracker artifacts,
+        ProjectMemoryWriter memory, RunMetadataStore runMeta, TaskProposer proposer,
         IOptions<AutoDevOptions> opt, ILogger<RunOrchestrator> log)
     {
         _db = db; _git = git; _guard = guard; _promptBuilder = promptBuilder;
         _planner = planner; _summaryParser = summaryParser; _email = email;
         _providers = providers; _availability = availability;
-        _proc = proc; _lock = runLock; _opt = opt.Value; _log = log;
+        _proc = proc; _lock = runLock; _skills = skills; _skillExporter = skillExporter;
+        _goals = goals; _risk = risk; _artifacts = artifacts; _memory = memory; _runMeta = runMeta;
+        _proposer = proposer; _opt = opt.Value; _log = log;
     }
 
     public async Task<RunRecord?> RunProjectAsync(int projectId, CancellationToken ct = default)
@@ -102,16 +125,67 @@ public class RunOrchestrator
             run.Branch = branch;
             project.CurrentBranch = branch;
 
-            // 3. Load brief.
+            // 3. Load brief + project goal layer (.ai-runner/PROJECT_GOAL.md etc.).
             var brief = await LoadBriefAsync(project, ct);
+            var goal = await _goals.LoadAsync(project.RepoPath, ct);
+            if (goal.HasGoal) Log("Loaded project goal from .ai-runner/PROJECT_GOAL.md.");
 
-            // 3b. Optional OpenAI creative planner (knowledge-base grounded). Fail-soft.
-            var creativePlan = await _planner.CreatePlanAsync(project, brief, ct);
+            // 3b. Optional OpenAI creative planner (goal + KB grounded). Fail-soft.
+            //     When no task is in progress, it proposes the next small task.
+            var creativePlan = await _planner.CreatePlanAsync(project, brief, goal, ct);
             if (!string.IsNullOrWhiteSpace(creativePlan))
-                Log("Creative planner produced a knowledge-base-grounded plan for this run.");
+                Log(string.IsNullOrWhiteSpace(project.CurrentTask)
+                    ? "Creative planner proposed the next task toward the project goal."
+                    : "Creative planner produced a goal-grounded plan for this run.");
 
-            // 4. Build prompt.
-            var prompt = _promptBuilder.Build(project, brief, run, creativePlan);
+            // 3c. Task selection: if no task is in progress and the planner did not
+            //     supply direction, propose the next small task locally (heuristic
+            //     fallback over BACKLOG/IDEAS/maintenance).
+            TaskProposal? proposal = null;
+            if (string.IsNullOrWhiteSpace(project.CurrentTask))
+            {
+                proposal = _proposer.Propose(project, goal);
+                _taskSource = string.IsNullOrWhiteSpace(creativePlan) ? proposal.Source : "planner";
+                Log($"No current task — proposed ({_taskSource}): {proposal.Title} [risk {proposal.Risk}]");
+            }
+            else
+            {
+                _taskSource = "explicit";
+            }
+
+            // 3d. Pre-run risk from the task intent (title/plan). Refined post-run
+            //     with the actual changed files.
+            var intent = string.Join('\n', new[] { project.CurrentTask, proposal?.Title, creativePlan }
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
+            _riskAssessment = _risk.Assess(Array.Empty<GitChange>(), intent);
+
+            // 3e. Risk gate: do not run risky tasks autonomously unless allowed.
+            if (_riskAssessment.Level == RiskLevel.Risky && !_opt.Risk.AllowRiskyAutonomousRuns)
+            {
+                _stage = LifecycleStage.Failed;
+                var why = "Risky task blocked (requires manual approval): "
+                          + string.Join("; ", _riskAssessment.Reasons)
+                          + ". Set AutoDev:Risk:AllowRiskyAutonomousRuns=true to allow.";
+                Log("RISK GATE: " + why);
+                await FailAsync(project, run, RunStatus.Paused, why, logBuffer, null, ct);
+                return run;
+            }
+
+            // 3f. Select global AutoDev skills (also match against the proposed title).
+            _selectedSkills = SelectSkills(project, brief + "\n" + (proposal?.Title ?? ""), creativePlan, Log);
+
+            // 4. Build prompt. Task is now planned.
+            _stage = LifecycleStage.Planned;
+            var prompt = _promptBuilder.Build(project, brief, run, creativePlan, _selectedSkills,
+                goal, proposal, _riskAssessment.Level);
+
+            // Persist the exact prompt, plan and task on the run so prompt/plan
+            // evolution is queryable in the DB (not just in the .ai-runner files).
+            run.Prompt = prompt;
+            run.CreativePlan = creativePlan;
+            run.TaskTitle = !string.IsNullOrWhiteSpace(project.CurrentTask)
+                ? project.CurrentTask!.Trim() : proposal?.Title;
+            run.TaskSource = _taskSource;
 
             // 5. Resolve provider order and try each until one runs (or all exhausted).
             var order = _providers.ResolveOrder(project.ProviderPriority).ToList();
@@ -136,6 +210,7 @@ public class RunOrchestrator
                 }
 
                 run.Provider = provider.Kind;
+                _stage = LifecycleStage.Running;
                 Log($"--- Invoking {provider.Kind} (timeout {timeout.TotalMinutes:0}m) ---");
                 _log.LogInformation("Project {Name}: invoking {Provider}", project.Name, provider.Kind);
 
@@ -193,15 +268,58 @@ public class RunOrchestrator
                 return run;
             }
 
-            // 7. Parse the AI summary.
+            // 7. Parse the AI summary (v2 structured fields, backward compatible).
             var summary = _summaryParser.Parse(invocation.Output);
             run.Summary = summary.FullText;
             project.LastSummary = summary.FullText;
             project.CurrentTask = summary.NextTask ?? summary.Pending ?? summary.Task;
+            _nextSuggestedTasks = SplitTasks(summary.NextSuggestedTasks ?? summary.NextTask);
 
-            // 8. Record changed files.
-            var changed = await _git.GetChangedFilesAsync(project.RepoPath, ct);
+            // 7b. Project memory: fold ideas/decisions/next-tasks into .ai-runner/ —
+            //     GATED by AutoDev:ProjectMemory:AutoWriteEnabled. Done BEFORE capturing
+            //     changed files so any updates are part of this commit.
+            _memoryUpdates = await _memory.UpdateAsync(
+                project.RepoPath, summary, DateTime.UtcNow.ToString("yyyy-MM-dd"),
+                _opt.ProjectMemory.AutoWriteEnabled, ct);
+            if (_memoryUpdates.Count > 0)
+                Log("Updated project memory: " + string.Join(", ", _memoryUpdates));
+            else if (!_opt.ProjectMemory.AutoWriteEnabled && !string.IsNullOrWhiteSpace(summary.MemoryUpdates))
+                Log("Memory auto-write disabled — recorded in run log only: " + summary.MemoryUpdates);
+
+            // 7c. Optional AI brief evolution (gated per project). Done BEFORE capturing
+            //     changed files so the proposal file is imported to the DB, not committed.
+            await MaybeEvolveBriefAsync(project, run, Log, ct);
+
+            // 8. Record changed files (+ status for risk) and track generated artifacts.
+            //    Merge git-detected artifacts with the paths the AI declared.
+            var changes = await _git.GetChangesAsync(project.RepoPath, ct);
+            var changed = changes.Select(c => c.Path).ToList();
             run.ChangedFiles = string.Join('\n', changed);
+            var gitArtifacts = _artifacts.Track(changed, project.RepoPath);
+            _trackedArtifacts = _artifacts.Merge(gitArtifacts, summary.ArtifactPaths, project.RepoPath);
+            if (_trackedArtifacts.Count > 0)
+                Log($"Tracked {_trackedArtifacts.Count} artifact(s): " +
+                    string.Join(", ", _trackedArtifacts.Take(6).Select(a => a.Path)));
+
+            // 8b. Refine risk with the actual changed files (keep the worst of pre/post).
+            var postRisk = _risk.Assess(changes, project.CurrentTask ?? summary.EffectiveTitle);
+            if ((int)postRisk.Level >= (int)_riskAssessment.Level) _riskAssessment = postRisk;
+            if (_riskAssessment.Level == RiskLevel.Risky)
+                Log("RISK: risky run — " + string.Join("; ", _riskAssessment.Reasons));
+            else
+                Log($"Risk level: {_riskAssessment.Level}.");
+
+            // 8c. If the changes turned out risky and risky runs aren't allowed, do
+            //     not commit them — leave them for manual review.
+            if (_riskAssessment.Level == RiskLevel.Risky && !_opt.Risk.AllowRiskyAutonomousRuns)
+            {
+                _stage = LifecycleStage.Failed;
+                run.Reason = "Risky changes left uncommitted (requires manual review): "
+                             + string.Join("; ", _riskAssessment.Reasons);
+                Log("RISK GATE: " + run.Reason);
+                await FinalizeAsync(project, run, RunStatus.Paused, summary, logBuffer, ct, commit: false);
+                return run;
+            }
 
             // 9. Guardrail check on changed files.
             var guard = _guard.Check(changed);
@@ -209,6 +327,7 @@ public class RunOrchestrator
             {
                 run.Reason = "Guardrail violation: protected files changed: " + string.Join(", ", guard.Violations);
                 Log(run.Reason);
+                _stage = LifecycleStage.Failed;
                 await FinalizeAsync(project, run, RunStatus.Failed, summary, logBuffer, ct, commit: false);
                 return run;
             }
@@ -216,6 +335,8 @@ public class RunOrchestrator
             // 10. Validation command.
             if (!string.IsNullOrWhiteSpace(project.ValidationCommand))
                 await RunValidationAsync(project, run, timeout, Log, ct);
+            if (!run.ValidationRun || run.ValidationPassed)
+                _stage = LifecycleStage.Validated;
 
             // 11. Commit (only if changes, build ok-or-not-run, and policy allows).
             var status = run.ValidationRun && !run.ValidationPassed ? RunStatus.Failed : RunStatus.Success;
@@ -235,12 +356,84 @@ public class RunOrchestrator
 
     // ---- helpers ----
 
+    /// <summary>
+    /// Match the run's task text (brief + notes + resume task + creative plan)
+    /// against the global skill store's triggers, log the decision, and — when
+    /// configured — export the skill into the repo for CLI discovery.
+    /// </summary>
+    private IReadOnlyList<SkillMatch> SelectSkills(Project project, string brief, string? creativePlan, Action<string> log)
+    {
+        if (!_opt.Skills.Enabled || !_opt.Skills.AutoSelect)
+            return Array.Empty<SkillMatch>();
+
+        var text = string.Join('\n', new[] { brief, project.Notes, project.CurrentTask, creativePlan }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+        var matches = _skills.Match(text);
+        if (matches.Count == 0)
+            return matches;
+
+        foreach (var m in matches)
+        {
+            log($"Skill selected: '{m.Skill.Id}' (matched: {string.Join(", ", m.MatchedKeywords)})");
+            _log.LogInformation("Project {Name}: selected skill '{Skill}' (matched: {Keywords})",
+                project.Name, m.Skill.Id, string.Join(", ", m.MatchedKeywords));
+            _skills.RecordSelection(new SkillSelectionLog(
+                m.Skill.Id, m.Skill.Name, m.MatchedKeywords, project.Name, project.CurrentTask, DateTime.UtcNow));
+
+            if (_opt.Skills.ExportToProject)
+            {
+                var dest = _skillExporter.Export(m.Skill, project.RepoPath);
+                if (dest is not null) log($"Exported skill '{m.Skill.Id}' to {dest} (git-excluded).");
+            }
+        }
+        return matches;
+    }
+
     private async Task<string> LoadBriefAsync(Project project, CancellationToken ct)
     {
+        // Primary source: the latest brief version in the DB.
+        var dbBrief = await ProjectBriefService.GetLatestContentAsync(_db, project.Id, ct);
+        if (!string.IsNullOrWhiteSpace(dbBrief)) return dbBrief;
+
+        // One-time seed: import the legacy on-disk brief (BriefPath) as version 1 so
+        // existing projects keep working and become editable/versioned from now on.
         var path = Path.IsPathRooted(project.BriefPath)
             ? project.BriefPath
             : Path.Combine(project.RepoPath, project.BriefPath);
-        return File.Exists(path) ? await File.ReadAllTextAsync(path, ct) : string.Empty;
+        var fileBrief = File.Exists(path) ? await File.ReadAllTextAsync(path, ct) : string.Empty;
+        if (!string.IsNullOrWhiteSpace(fileBrief))
+        {
+            await ProjectBriefService.AddVersionIfChangedAsync(
+                _db, project.Id, fileBrief, BriefAuthor.Seed, $"seeded from {project.BriefPath}", ct);
+            await _db.SaveChangesAsync(ct);
+        }
+        return fileBrief;
+    }
+
+    /// <summary>
+    /// When the project allows it, import an AI-proposed brief revision left at
+    /// .ai-runner/brief-proposal.md into the DB as a NEW version (history preserved),
+    /// then remove the proposal file so it is not committed as a project artifact.
+    /// </summary>
+    private async Task MaybeEvolveBriefAsync(Project project, RunRecord run, Action<string> log, CancellationToken ct)
+    {
+        if (!project.AllowAiEditBrief) return;
+
+        var path = Path.Combine(project.RepoPath, ".ai-runner", "brief-proposal.md");
+        if (!File.Exists(path)) return;
+
+        string content;
+        try { content = await File.ReadAllTextAsync(path, ct); }
+        catch (Exception ex) { _log.LogWarning(ex, "Could not read AI brief proposal."); return; }
+
+        try { File.Delete(path); } catch { /* best effort — keep going */ }
+
+        var version = await ProjectBriefService.AddVersionIfChangedAsync(
+            _db, project.Id, content, BriefAuthor.Ai, $"AI-evolved during run #{run.Id}", ct);
+        if (version is null) { log("AI brief proposal was empty or unchanged — ignored."); return; }
+
+        await _db.SaveChangesAsync(ct);
+        log($"AI evolved the brief → version {version.Version} (stored in DB; history preserved).");
     }
 
     private async Task RunValidationAsync(Project project, RunRecord run, TimeSpan timeout,
@@ -278,9 +471,12 @@ public class RunOrchestrator
         ProviderInvocation inv, StringBuilder logBuffer, CancellationToken ct)
     {
         run.Reason = inv.Reason ?? status.ToString();
-        // Capture any partial progress.
-        var changed = await _git.GetChangedFilesAsync(project.RepoPath, ct);
+        // Capture any partial progress (changed files, artifacts, risk).
+        var changes = await _git.GetChangesAsync(project.RepoPath, ct);
+        var changed = changes.Select(c => c.Path).ToList();
         run.ChangedFiles = string.Join('\n', changed);
+        _trackedArtifacts = _artifacts.Track(changed, project.RepoPath);
+        _riskAssessment = _risk.Assess(changes, project.CurrentTask);
         await FinalizeAsync(project, run, status, _summaryParser.Parse(inv.Output), logBuffer, ct, commit: false);
     }
 
@@ -303,6 +499,7 @@ public class RunOrchestrator
             var sha = await _git.CommitAllAsync(project.RepoPath, msg, ct);
             run.CommitSha = sha;
             logBuffer.AppendLine(sha is null ? "Commit failed or nothing to commit." : $"Committed {sha}");
+            if (sha is not null) _stage = LifecycleStage.Committed;
 
             if (sha is not null && project.AutoPush && run.Branch is not null)
             {
@@ -311,8 +508,20 @@ public class RunOrchestrator
             }
         }
 
-        // Persist run log + markdown summary to disk.
+        // Learned = memory updated this run.
+        if (_memoryUpdates.Count > 0 && _stage < LifecycleStage.Learned)
+            _stage = LifecycleStage.Learned;
+
+        // Persist run log + markdown summary to disk, then the machine-readable sidecar.
         run.LogPath = await WriteRunFilesAsync(project, run, summary, logBuffer.ToString(), ct);
+        if (_stage != LifecycleStage.Failed)
+            _stage = (LifecycleStage)Math.Max((int)_stage, (int)LifecycleStage.Reported);
+        if (status is RunStatus.Failed) _stage = LifecycleStage.Failed;
+        await WriteRunMetadataAsync(project, run, ct);
+
+        // Persist the final lifecycle stage + risk on the run (queryable history).
+        run.Stage = _stage.ToString();
+        run.Risk = _riskAssessment.Level.ToString();
 
         // Update denormalized project snapshot.
         project.LastRunStatus = status;
@@ -355,6 +564,37 @@ public class RunOrchestrator
             md.AppendLine(summary.FullText);
             md.AppendLine();
         }
+        if (_selectedSkills.Count > 0)
+        {
+            md.AppendLine("## Skills selected");
+            foreach (var m in _selectedSkills)
+                md.AppendLine($"- **{m.Skill.Id}** — matched: {string.Join(", ", m.MatchedKeywords)}");
+            md.AppendLine();
+            md.AppendLine("(Output path, generated files, validation result and next suggested animations "
+                          + "are reported by the agent in the summary above under SKILL/ASSET_PATH/GENERATED_FILES/VALIDATION/NEXT_ANIMATIONS.)");
+            md.AppendLine();
+        }
+        md.AppendLine("## Lifecycle & risk");
+        md.AppendLine($"- Lifecycle stage reached: **{_stage}**");
+        if (!string.IsNullOrWhiteSpace(_taskSource))
+            md.AppendLine($"- Task source: {_taskSource}");
+        md.AppendLine($"- Risk level: **{_riskAssessment.Level}**"
+                      + (_riskAssessment.Reasons.Count > 0 ? $" — {string.Join("; ", _riskAssessment.Reasons)}" : ""));
+        if (_memoryUpdates.Count > 0)
+            md.AppendLine($"- Memory updated: {string.Join(", ", _memoryUpdates)}");
+        if (_nextSuggestedTasks.Count > 0)
+        {
+            md.AppendLine("- Next suggested tasks:");
+            foreach (var t in _nextSuggestedTasks) md.AppendLine($"    - {t}");
+        }
+        md.AppendLine();
+        if (_trackedArtifacts.Count > 0)
+        {
+            md.AppendLine("## Generated artifacts");
+            foreach (var a in _trackedArtifacts)
+                md.AppendLine($"- `{a.Path}` — {a.Kind}{(a.SkillId is null ? "" : $" (skill: {a.SkillId})")}");
+            md.AppendLine();
+        }
         md.AppendLine("## Changed files");
         md.AppendLine(string.IsNullOrWhiteSpace(run.ChangedFiles) ? "(none)" : run.ChangedFiles);
         md.AppendLine();
@@ -368,12 +608,54 @@ public class RunOrchestrator
         return mdPath;
     }
 
+    /// <summary>Write the machine-readable run sidecar next to the markdown log.</summary>
+    private async Task WriteRunMetadataAsync(Project project, RunRecord run, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(run.LogPath)) return;
+        var meta = new RunMetadata
+        {
+            RunId = run.Id,
+            ProjectId = project.Id,
+            ProjectName = project.Name,
+            Provider = run.Provider.ToString(),
+            Status = run.Status.ToString(),
+            StartedAt = run.StartedAt,
+            FinishedAt = run.FinishedAt,
+            Branch = run.Branch,
+            CommitSha = run.CommitSha,
+            Task = project.CurrentTask,
+            Stage = _stage.ToString(),
+            Risk = _riskAssessment.Level.ToString(),
+            RiskReasons = _riskAssessment.Reasons,
+            Skills = _selectedSkills.Select(s => new RunSkillRef(s.Skill.Id, s.MatchedKeywords)).ToList(),
+            Artifacts = _trackedArtifacts,
+            ValidationRun = run.ValidationRun,
+            ValidationPassed = run.ValidationPassed,
+            MemoryUpdates = _memoryUpdates,
+            NextSuggestedTasks = _nextSuggestedTasks,
+            TaskSource = _taskSource
+        };
+        try { await _runMeta.WriteAsync(run.LogPath!, meta, ct); }
+        catch (Exception ex) { _log.LogWarning(ex, "Failed to write run sidecar for run #{Run}.", run.Id); }
+    }
+
     private static string BuildCommitMessage(Project project, ParsedSummary? summary)
     {
         var task = summary?.Task ?? project.CurrentTask ?? "autonomous changes";
         var first = task.Split('\n')[0];
         if (first.Length > 72) first = first[..72];
         return $"autodev: {first}\n\nAutomated change by AutoDev runner.";
+    }
+
+    /// <summary>Split a free-text "next tasks" field into individual task lines.</summary>
+    private static List<string> SplitTasks(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return new();
+        return text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(l => l.TrimStart('-', '*', '•', ' ').Trim())
+            .Where(l => l.Length > 0 && !l.Equals("none", StringComparison.OrdinalIgnoreCase))
+            .Take(5)
+            .ToList();
     }
 
     private static (string file, string args) SplitCommand(string command)

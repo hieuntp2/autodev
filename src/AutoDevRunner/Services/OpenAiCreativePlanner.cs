@@ -33,7 +33,8 @@ public class OpenAiCreativePlanner
     /// Returns a creative plan as Markdown, or null when planning is skipped or
     /// fails. Never throws — the run must not depend on this step succeeding.
     /// </summary>
-    public async Task<string?> CreatePlanAsync(Project project, string brief, CancellationToken ct = default)
+    public async Task<string?> CreatePlanAsync(Project project, string brief,
+        ProjectGoal? goal = null, CancellationToken ct = default)
     {
         if (!_opt.Enabled)
             return null;
@@ -47,7 +48,7 @@ public class OpenAiCreativePlanner
 
         try
         {
-            var body = BuildRequestBody(project, brief);
+            var body = BuildRequestBody(project, brief, goal);
 
             var http = _httpFactory.CreateClient();
             using var message = new HttpRequestMessage(HttpMethod.Post, _opt.ApiUrl)
@@ -89,7 +90,7 @@ public class OpenAiCreativePlanner
         return Environment.GetEnvironmentVariable("OPENAI_API_KEY")?.Trim() ?? string.Empty;
     }
 
-    private JsonObject BuildRequestBody(Project project, string brief)
+    private JsonObject BuildRequestBody(Project project, string brief, ProjectGoal? goal)
     {
         var instructions = new StringBuilder();
         instructions.AppendLine("You are the Creative Director for an autonomous software project.");
@@ -99,25 +100,50 @@ public class OpenAiCreativePlanner
         instructions.AppendLine("Search the attached knowledge base freely for product vision, design language, and inspiration,");
         instructions.AppendLine("and let it fuel — not limit — your creativity.");
         instructions.AppendLine();
+        instructions.AppendLine("Anchor the plan to the PROJECT GOAL below. If no task is currently in progress, PROPOSE the");
+        instructions.AppendLine("single smallest valuable next task that advances the goal, grounded in the goal + run history.");
+        instructions.AppendLine();
         instructions.AppendLine("Output concise Markdown a coding agent can execute this run, with sections:");
         instructions.AppendLine("## Creative Direction — the vision/theme for this run");
-        instructions.AppendLine("## This Run's Task — one coherent, buildable slice");
+        instructions.AppendLine("## This Run's Task — one coherent, buildable slice (propose it if none is in progress)");
         instructions.AppendLine("## Concrete Steps — ordered, specific");
         instructions.AppendLine("## Delight & Polish — small touches that make it shine");
         instructions.AppendLine("## Acceptance — how we know it's done");
         instructions.AppendLine();
+        if (!string.IsNullOrWhiteSpace(project.ProjectType))
+        {
+            var platform = project.ProjectType!.Trim();
+            instructions.AppendLine("## TARGET PLATFORM — NON-NEGOTIABLE");
+            instructions.AppendLine($"- This project targets {platform}. Every task you propose MUST be implementable as");
+            instructions.AppendLine($"  native {platform} code in this repo's real toolchain. Do NOT propose an HTML/JS/canvas");
+            instructions.AppendLine("  web page, a browser demo, or a reimplementation on any other platform/framework —");
+            instructions.AppendLine("  not even as a faster way to show a feature. Creativity is about the product, not the stack.");
+            instructions.AppendLine();
+        }
+
         instructions.AppendLine("## Project");
         instructions.AppendLine($"- Name: {project.Name}");
         if (!string.IsNullOrWhiteSpace(project.Notes))
             instructions.AppendLine($"- Notes: {project.Notes}");
         if (!string.IsNullOrWhiteSpace(project.CurrentTask))
             instructions.AppendLine($"- Task in progress from last run: {project.CurrentTask}");
+        else
+            instructions.AppendLine("- No task is currently in progress — propose the next one toward the goal.");
         if (!string.IsNullOrWhiteSpace(project.LastSummary))
         {
             instructions.AppendLine("- Previous run summary:");
             instructions.AppendLine(project.LastSummary!.Trim());
         }
         instructions.AppendLine();
+        if (goal is { HasAny: true })
+        {
+            instructions.AppendLine("## Project goal & memory");
+            if (goal.HasGoal) { instructions.AppendLine("### PROJECT_GOAL"); instructions.AppendLine(goal.Goal!.Trim()); }
+            if (!string.IsNullOrWhiteSpace(goal.Roadmap)) { instructions.AppendLine("### ROADMAP"); instructions.AppendLine(goal.Roadmap!.Trim()); }
+            if (!string.IsNullOrWhiteSpace(goal.Backlog)) { instructions.AppendLine("### BACKLOG"); instructions.AppendLine(goal.Backlog!.Trim()); }
+            if (!string.IsNullOrWhiteSpace(goal.Ideas)) { instructions.AppendLine("### IDEAS"); instructions.AppendLine(goal.Ideas!.Trim()); }
+            instructions.AppendLine();
+        }
         instructions.AppendLine("## Project brief");
         instructions.AppendLine(string.IsNullOrWhiteSpace(brief)
             ? "(No brief provided. Infer the goal from the knowledge base and the project name.)"

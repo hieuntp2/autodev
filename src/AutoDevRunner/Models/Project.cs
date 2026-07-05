@@ -17,8 +17,28 @@ public class Project
     [Required]
     public string RepoPath { get; set; } = string.Empty;
 
-    /// <summary>Path to the project brief (e.g. ai-autonomous.md), absolute or relative to RepoPath.</summary>
+    /// <summary>
+    /// Legacy on-disk brief path (e.g. ai-autonomous.md). The brief now lives in the
+    /// database as versioned <see cref="ProjectBrief"/> rows; this path is only used to
+    /// SEED the first version when a project has no brief version yet.
+    /// </summary>
     public string BriefPath { get; set; } = "ai-autonomous.md";
+
+    /// <summary>
+    /// Allow the AI to autonomously evolve this project's brief during a run. When on,
+    /// the agent may write a revised brief to .ai-runner/brief-proposal.md; the runner
+    /// stores it as a NEW brief version (history is preserved) and the next planner run
+    /// automatically picks the latest. Off by default.
+    /// </summary>
+    public bool AllowAiEditBrief { get; set; } = false;
+
+    /// <summary>
+    /// Target platform / stack this project MUST build for, e.g. "Android (Kotlin/Jetpack Compose)",
+    /// ".NET", "Node/TypeScript web". Injected into the prompt as a non-negotiable constraint so the
+    /// agent cannot silently reimplement the product on a different stack (e.g. an HTML prototype for
+    /// an Android app). Empty/null = no platform is enforced (agent infers from the codebase).
+    /// </summary>
+    public string? ProjectType { get; set; }
 
     public bool Enabled { get; set; } = true;
     public bool Paused { get; set; } = false;
@@ -63,4 +83,5 @@ public class Project
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public List<RunRecord> Runs { get; set; } = new();
+    public List<ProjectBrief> Briefs { get; set; } = new();
 }

@@ -56,6 +56,18 @@ builder.Services.AddSingleton<ProviderAvailability>();
 builder.Services.AddSingleton<CodexUsageReader>();
 builder.Services.AddSingleton<ContinuousRunner>();
 
+// ---- Global skill system ----
+builder.Services.AddSingleton<AutoDevRunner.Skills.SkillRegistry>();
+builder.Services.AddSingleton<AutoDevRunner.Skills.SkillExporter>();
+
+// ---- Goal layer, lifecycle, risk, artifacts, memory (all file-based) ----
+builder.Services.AddSingleton<ProjectGoalService>();
+builder.Services.AddSingleton<RiskAssessor>();
+builder.Services.AddSingleton<ArtifactTracker>();
+builder.Services.AddSingleton<ProjectMemoryWriter>();
+builder.Services.AddSingleton<RunMetadataStore>();
+builder.Services.AddSingleton<TaskProposer>();
+
 // ---- Providers ----
 builder.Services.AddSingleton<IAiProvider, CodexCliProvider>();
 builder.Services.AddSingleton<IAiProvider, ClaudeCliProvider>();

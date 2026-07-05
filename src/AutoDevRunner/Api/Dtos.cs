@@ -7,6 +7,8 @@ public record CreateProjectDto(
     string Name,
     string RepoPath,
     string? BriefPath,
+    string? Brief,
+    string? ProjectType,
     int? Priority,
     string? ProviderPriority,
     string? ValidationCommand,
@@ -14,6 +16,7 @@ public record CreateProjectDto(
     bool? AutoCommit,
     bool? AutoPush,
     bool? AllowRunOnMainBranch,
+    bool? AllowAiEditBrief,
     string? Notes);
 
 /// <summary>Partial update. Null fields are left unchanged.</summary>
@@ -21,6 +24,8 @@ public record UpdateProjectDto(
     string? Name,
     string? RepoPath,
     string? BriefPath,
+    string? Brief,
+    string? ProjectType,
     bool? Enabled,
     bool? Paused,
     int? Priority,
@@ -30,7 +35,16 @@ public record UpdateProjectDto(
     bool? AutoCommit,
     bool? AutoPush,
     bool? AllowRunOnMainBranch,
+    bool? AllowAiEditBrief,
     string? Notes);
+
+/// <summary>One brief version for the history view.</summary>
+public record BriefVersionDto(
+    int Version,
+    string Author,
+    string? Note,
+    DateTime CreatedAt,
+    string Content);
 
 public record OverviewDto(
     int TotalProjects,
@@ -65,6 +79,36 @@ public record ProviderStatusDto(
     DateTime? LastQuotaLimitAt,
     string? LastQuotaResetHint,
     string? LastKnownUsage);
+
+/// <summary>Project goal-layer status + content for the dashboard.</summary>
+public record ProjectGoalDto(
+    bool HasGoal,
+    IReadOnlyDictionary<string, bool> Files,
+    string? Goal,
+    string? Roadmap,
+    string? Backlog,
+    string? Ideas,
+    string? Decisions);
+
+/// <summary>A global skill as shown on the dashboard.</summary>
+public record SkillDto(
+    string Id,
+    string Name,
+    string Version,
+    string Description,
+    bool Enabled,
+    IReadOnlyList<string> Triggers,
+    string InvocationHint,
+    string SourcePath);
+
+/// <summary>A logged skill-selection decision (which skill for which task).</summary>
+public record SkillSelectionDto(
+    string SkillId,
+    string SkillName,
+    IReadOnlyList<string> MatchedKeywords,
+    string ProjectName,
+    string? Task,
+    DateTime SelectedAt);
 
 /// <summary>One directory entry in the folder picker. For drive roots, Name is e.g. "C:\".</summary>
 public record DirEntryDto(string Name, string Path);
