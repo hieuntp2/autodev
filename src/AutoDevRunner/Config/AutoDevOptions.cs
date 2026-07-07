@@ -7,11 +7,29 @@ public class AutoDevOptions
     public SchedulerOptions Scheduler { get; set; } = new();
     public ProvidersOptions Providers { get; set; } = new();
     public EmailOptions Email { get; set; } = new();
+    public BurnTokensOptions BurnTokens { get; set; } = new();
     public PlannerOptions Planner { get; set; } = new();
     public ContinuousOptions Continuous { get; set; } = new();
     public SkillsOptions Skills { get; set; } = new();
     public ProjectMemoryOptions ProjectMemory { get; set; } = new();
     public RiskOptions Risk { get; set; } = new();
+
+    /// <summary>
+    /// Whether a trigger should keep looping until provider quota is exhausted.
+    /// BurnTokens is the explicit switch; Continuous.Enabled is kept as a legacy
+    /// fallback only when BurnTokens.Enabled is absent from configuration.
+    /// </summary>
+    public bool BurnTokensEnabled => BurnTokens.Enabled ?? Continuous.Enabled;
+}
+
+/// <summary>
+/// Explicit user-facing switch for quota-burning mode. When enabled, each
+/// scheduler/manual trigger loops runs until providers are no longer viable.
+/// When disabled, projects run sequentially once per trigger.
+/// </summary>
+public class BurnTokensOptions
+{
+    public bool? Enabled { get; set; }
 }
 
 /// <summary>Controls whether AutoDev writes back to a project's memory files.</summary>

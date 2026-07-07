@@ -99,7 +99,7 @@ using (var scope = app.Services.CreateScope())
 // ---- One-shot run mode (Windows Task Scheduler) ----
 if (runOnce)
 {
-    if (autoDevOptions.Continuous.Enabled)
+    if (autoDevOptions.BurnTokensEnabled)
     {
         // Continuous: loop run → commit → usage check → run again, until every
         // provider hits the usage ceiling (or the safety cap).

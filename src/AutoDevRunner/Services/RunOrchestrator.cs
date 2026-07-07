@@ -68,24 +68,48 @@ public class RunOrchestrator
         _proposer = proposer; _opt = opt.Value; _log = log;
     }
 
-    public async Task<RunRecord?> RunProjectAsync(int projectId, CancellationToken ct = default)
+    public Task<RunRecord?> RunProjectAsync(int projectId, CancellationToken ct = default) =>
+        RunProjectCoreAsync(projectId, acquiredLease: null, releaseLeaseOnCompletion: true, ct);
+
+    public Task<RunRecord?> RunProjectAsync(int projectId, RunLockLease acquiredLease,
+        bool releaseLeaseOnCompletion, CancellationToken ct = default) =>
+        RunProjectCoreAsync(projectId, acquiredLease, releaseLeaseOnCompletion, ct);
+
+    private async Task<RunRecord?> RunProjectCoreAsync(int projectId, RunLockLease? acquiredLease,
+        bool releaseLeaseOnCompletion, CancellationToken ct)
     {
         var project = await _db.Projects.FirstOrDefaultAsync(p => p.Id == projectId, ct);
-        if (project is null) { _log.LogWarning("Project {Id} not found.", projectId); return null; }
-
-        if (!_lock.TryAcquire(projectId))
+        if (project is null)
         {
-            _log.LogInformation("Project {Name} is already running; skipping.", project.Name);
+            _log.LogWarning("Project {Id} not found.", projectId);
+            if (acquiredLease is not null && releaseLeaseOnCompletion) acquiredLease.Dispose();
             return null;
         }
 
+        RunLockLease? lease = acquiredLease;
+        if (lease is not null && lease.ProjectId != projectId)
+        {
+            _log.LogWarning("Project {Name}: acquired lock belongs to project {LockedProject}; skipping.",
+                project.Name, lease.ProjectId);
+            if (releaseLeaseOnCompletion) lease.Dispose();
+            return null;
+        }
+
+        if (lease is null && !_lock.TryAcquire(project, out lease, out var reason))
+        {
+            _log.LogInformation("Project {Name} is already running; skipping. {Reason}", project.Name, reason);
+            return null;
+        }
+
+        lease?.Renew(RunLock.LeaseDurationFor(project));
         try
         {
             return await ExecuteAsync(project, ct);
         }
         finally
         {
-            _lock.Release(projectId);
+            if (lease is not null && releaseLeaseOnCompletion)
+                lease.Dispose();
         }
     }
 

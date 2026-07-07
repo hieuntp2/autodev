@@ -19,6 +19,7 @@ public static class ApiEndpoints
         api.MapGet("/overview", async (AppDbContext db, RunLock runLock, ProviderRegistry providers) =>
         {
             var projects = await db.Projects.AsNoTracking().ToListAsync();
+            var runningProjectIds = runLock.ActiveProjectIdsFor(projects).ToHashSet();
             var lastRun = await db.Runs.AsNoTracking()
                 .OrderByDescending(r => r.StartedAt).FirstOrDefaultAsync();
             var lastRunProjectName = lastRun is null ? null
@@ -37,7 +38,7 @@ public static class ApiEndpoints
                 TotalProjects: projects.Count,
                 EnabledProjects: projects.Count(p => p.Enabled),
                 PausedProjects: projects.Count(p => p.Paused),
-                RunningProjects: runLock.ActiveProjectIds.Count,
+                RunningProjects: runningProjectIds.Count,
                 LastRun: lastRun?.ToDto(lastRunProjectName!),
                 LastProvider: lastRun?.Provider.ToString(),
                 LastError: projects.Where(p => p.LastError != null)
@@ -51,7 +52,7 @@ public static class ApiEndpoints
         {
             var projects = await db.Projects.AsNoTracking()
                 .OrderByDescending(p => p.Priority).ThenBy(p => p.Id).ToListAsync();
-            return Results.Ok(projects.Select(p => ProjectView(p, runLock.IsRunning(p.Id))));
+            return Results.Ok(projects.Select(p => ProjectView(p, runLock.IsRunning(p))));
         });
 
         api.MapGet("/projects/{id:int}", async (int id, AppDbContext db, RunLock runLock) =>
@@ -65,7 +66,7 @@ public static class ApiEndpoints
             var brief = await ProjectBriefService.GetLatestAsync(db, id);
             return Results.Ok(new
             {
-                project = ProjectView(p, runLock.IsRunning(p.Id), full: true),
+                project = ProjectView(p, runLock.IsRunning(p), full: true),
                 brief = brief is null ? null : new { brief.Version, Author = brief.Author.ToString(), brief.CreatedAt, brief.Content },
                 recentRuns = recentRuns.Select(r => r.ToDto(p.Name))
             });
@@ -349,6 +350,8 @@ public static class ApiEndpoints
             return Results.Ok(new
             {
                 scheduler = o.Scheduler,
+                burnTokens = new { Enabled = o.BurnTokensEnabled, ExplicitEnabled = o.BurnTokens.Enabled },
+                continuous = o.Continuous,
                 email = new { o.Email.Enabled, To = o.Email.ToEmail, Provider = "EmailJS", o.Email.ServiceId },
                 providers = new
                 {
