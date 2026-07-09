@@ -1,4 +1,5 @@
 using System.Text;
+using AutoDevRunner.Config;
 using AutoDevRunner.Models;
 using AutoDevRunner.Skills;
 
@@ -18,8 +19,10 @@ public class PromptBuilder
         ProjectGoal? goal = null, TaskProposal? proposal = null, RiskLevel? risk = null,
         Config.RiskOptions? riskPolicy = null, RunLessons? lessons = null,
         string? validationCommandOverride = null,
-        string? projectPromptDirectives = null)
+        string? projectPromptDirectives = null,
+        PromptOptions? promptOptions = null)
     {
+        promptOptions ??= new PromptOptions();
         var sb = new StringBuilder();
 
         sb.AppendLine("You are an autonomous software engineer working on this repository.");
@@ -48,7 +51,7 @@ public class PromptBuilder
         sb.AppendLine("## Project brief");
         sb.AppendLine(string.IsNullOrWhiteSpace(brief)
             ? "(No brief found. Infer the goal from the codebase.)"
-            : brief.Trim());
+            : Compact(brief.Trim(), promptOptions.BriefMaxChars));
         sb.AppendLine();
 
         // Optional: let the agent evolve the brief itself (versioned in the DB).
@@ -66,8 +69,8 @@ public class PromptBuilder
         }
 
         // Project Goal Layer (.ai-runner/PROJECT_GOAL.md + optional roadmap/backlog/…).
-        AppendGoal(sb, goal);
-        AppendProjectPromptDirectives(sb, projectPromptDirectives);
+        AppendGoal(sb, goal, promptOptions, !string.IsNullOrWhiteSpace(project.CurrentTask));
+        AppendProjectPromptDirectives(sb, projectPromptDirectives, promptOptions);
 
         if (project.AllowAiEditBrief)
         {
@@ -88,7 +91,7 @@ public class PromptBuilder
             sb.AppendLine("A creative director drafted this plan for today, grounded in the product knowledge base.");
             sb.AppendLine("Treat it as your strong default direction; deviate only if the codebase makes a better path obvious.");
             sb.AppendLine();
-            sb.AppendLine(creativePlan.Trim());
+            sb.AppendLine(Compact(creativePlan.Trim(), promptOptions.CreativePlanMaxChars));
             sb.AppendLine();
         }
 
@@ -104,14 +107,17 @@ public class PromptBuilder
             if (!string.IsNullOrWhiteSpace(project.LastSummary))
             {
                 sb.AppendLine("- Previous run summary:");
-                sb.AppendLine(Indent(project.LastSummary!.Trim()));
+                var resumeCap = lessons is { HasAny: true }
+                    ? promptOptions.ResumeSummaryWithLessonsMaxChars
+                    : promptOptions.ResumeSummaryMaxChars;
+                sb.AppendLine(Indent(Compact(project.LastSummary!.Trim(), resumeCap)));
             }
             sb.AppendLine("Continue this work where it left off if it still makes sense; otherwise pick the next most valuable task.");
             sb.AppendLine();
         }
 
         // Relevant project memory (recent ideas + past decisions), compacted.
-        AppendMemory(sb, goal);
+        AppendMemory(sb, goal, promptOptions);
 
         // Lessons from the most recent runs (outcomes + what to avoid).
         AppendLessons(sb, lessons);
@@ -170,7 +176,7 @@ public class PromptBuilder
         sb.AppendLine();
 
         AppendRequiredOutput(sb, skills);
-        return sb.ToString();
+        return ApplyBudget(sb.ToString(), promptOptions);
     }
 
     public string BuildRepair(Project project, string? taskTitle, string validationCommand,
@@ -263,15 +269,18 @@ public class PromptBuilder
     /// long-term goal, not just the immediate task. Optional supporting files
     /// (roadmap/backlog/ideas/decisions) are included, trimmed, when present.
     /// </summary>
-    private static void AppendGoal(StringBuilder sb, ProjectGoal? goal)
+    private static void AppendGoal(StringBuilder sb, ProjectGoal? goal, PromptOptions options, bool taskInProgress)
     {
         if (goal is not { HasAny: true }) return;
 
         sb.AppendLine("## Project goal (long-term direction)");
         sb.AppendLine(goal.HasGoal
-            ? Compact(goal.Goal!, 1600)
+            ? Compact(goal.Goal!, options.ProjectGoalMaxChars)
             : "(No PROJECT_GOAL.md yet. If the goal is clear from the brief, write .ai-runner/PROJECT_GOAL.md this run.)");
         sb.AppendLine();
+
+        var roadmapCap = taskInProgress ? Math.Max(200, options.RoadmapMaxChars / 2) : options.RoadmapMaxChars;
+        var backlogCap = taskInProgress ? Math.Max(200, options.BacklogMaxChars / 2) : options.BacklogMaxChars;
 
         void Section(string title, string? body, int max)
         {
@@ -280,8 +289,8 @@ public class PromptBuilder
             sb.AppendLine(Compact(body!, max));
             sb.AppendLine();
         }
-        Section("Roadmap", goal.Roadmap, 900);
-        Section("Backlog", goal.Backlog, 900);
+        Section("Roadmap", goal.Roadmap, roadmapCap);
+        Section("Backlog", goal.Backlog, backlogCap);
     }
 
     /// <summary>
@@ -320,12 +329,12 @@ public class PromptBuilder
         }
     }
 
-    private static void AppendProjectPromptDirectives(StringBuilder sb, string? directives)
+    private static void AppendProjectPromptDirectives(StringBuilder sb, string? directives, PromptOptions options)
     {
         if (string.IsNullOrWhiteSpace(directives)) return;
 
         sb.AppendLine("## Project prompt directives (self-evolved)");
-        sb.AppendLine(Compact(directives, 1200));
+        sb.AppendLine(Compact(directives, options.PromptDirectivesMaxChars));
         sb.AppendLine();
     }
 
@@ -335,7 +344,7 @@ public class PromptBuilder
         s.Length <= max ? s : "...\n" + s[^max..];
 
     /// <summary>Relevant project memory: recent ideas + past decisions, compacted.</summary>
-    private static void AppendMemory(StringBuilder sb, ProjectGoal? goal)
+    private static void AppendMemory(StringBuilder sb, ProjectGoal? goal, PromptOptions options)
     {
         if (goal is null) return;
         if (string.IsNullOrWhiteSpace(goal.Ideas) && string.IsNullOrWhiteSpace(goal.Decisions)) return;
@@ -344,15 +353,79 @@ public class PromptBuilder
         if (!string.IsNullOrWhiteSpace(goal.Decisions))
         {
             sb.AppendLine("### Past decisions (respect these)");
-            sb.AppendLine(Compact(goal.Decisions!, 700));
+            sb.AppendLine(Compact(goal.Decisions!, options.MemoryMaxChars));
             sb.AppendLine();
         }
         if (!string.IsNullOrWhiteSpace(goal.Ideas))
         {
             sb.AppendLine("### Recent ideas");
-            sb.AppendLine(Compact(goal.Ideas!, 700));
+            sb.AppendLine(Compact(goal.Ideas!, options.MemoryMaxChars));
             sb.AppendLine();
         }
+    }
+
+    private static string ApplyBudget(string prompt, PromptOptions options)
+    {
+        var max = Math.Max(1000, options.MaxChars);
+        if (prompt.Length <= max) return prompt;
+
+        var result = prompt;
+        result = ShrinkSection(result, "## Creative plan for this run (from the knowledge base)", 800);
+        result = ShrinkSection(result, "### Roadmap", 450);
+        result = ShrinkSection(result, "### Backlog", 450);
+        result = ShrinkSection(result, "## Relevant project memory", 800);
+        result = ShrinkSection(result, "## Project prompt directives (self-evolved)",
+            Math.Max(400, options.PromptDirectivesMinChars));
+        result = ShrinkSection(result, "## Resume context (from the previous run)", 900);
+        result = ShrinkSection(result, "## Recent run history (lessons)", 1000);
+        if (result.Length <= max) return result;
+
+        const string requiredHeading = "## Required output";
+        const string protectedHeading = "## This run's task";
+        var requiredStart = result.LastIndexOf(requiredHeading, StringComparison.Ordinal);
+        var protectedStart = result.IndexOf(protectedHeading, StringComparison.Ordinal);
+        if (requiredStart < 0 || protectedStart < 0 || protectedStart >= requiredStart)
+            return Compact(result, max);
+
+        var protectedTail = result[protectedStart..];
+        var prefix = result[..protectedStart];
+        var prefixBudget = max - protectedTail.Length;
+        if (prefixBudget <= 0)
+            return protectedTail.Length <= max ? protectedTail : Compact(result, max);
+
+        var compactPrefix = Compact(prefix, prefixBudget);
+        if (compactPrefix.Length > prefixBudget)
+            compactPrefix = compactPrefix[..prefixBudget];
+        return compactPrefix + protectedTail;
+    }
+
+    private static string ShrinkSection(string text, string heading, int targetChars)
+    {
+        var start = text.IndexOf(heading, StringComparison.Ordinal);
+        if (start < 0) return text;
+
+        var contentStart = text.IndexOf('\n', start);
+        if (contentStart < 0) return text;
+        contentStart++;
+
+        var end = FindNextSectionStart(text, contentStart);
+        var sectionLength = end - start;
+        if (sectionLength <= targetChars) return text;
+
+        var bodyBudget = Math.Max(80, targetChars - heading.Length - 2);
+        var body = text[contentStart..end];
+        var replacement = heading + "\n" + Compact(body, bodyBudget).TrimEnd() + "\n\n";
+        return text[..start] + replacement + text[end..];
+    }
+
+    private static int FindNextSectionStart(string text, int from)
+    {
+        var nextMain = text.IndexOf("\n## ", from, StringComparison.Ordinal);
+        var nextSub = text.IndexOf("\n### ", from, StringComparison.Ordinal);
+        if (nextMain < 0 && nextSub < 0) return text.Length;
+        if (nextMain < 0) return nextSub + 1;
+        if (nextSub < 0) return nextMain + 1;
+        return Math.Min(nextMain, nextSub) + 1;
     }
 
     /// <summary>

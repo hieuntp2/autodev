@@ -3,3 +3,4 @@
 2026-07-09T08:04:56Z | step 3 | AUTONOMY phase 2 | tests: 91 green | Added validation inference, bounded repair prompts, and explicit session result reporting.
 2026-07-09T08:06:51Z | step 4 | AUTONOMY phase 3 | tests: 93 green | In-repo deletions are allowed by default while out-of-project and secret guards remain.
 2026-07-09T08:09:57Z | step 5 | AUTONOMY phase 4 | tests: 98 green | Added self-evolving project prompt directives with archived history and sidecar flag.
+2026-07-09T08:14:18Z | step 6 | TOKEN phase 2 | tests: 101 green | Added configurable prompt caps, priority shrinking, dedupe caps, and budget enforcement.

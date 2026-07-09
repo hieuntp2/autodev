@@ -8,6 +8,7 @@ public class AutoDevOptions
     public ProvidersOptions Providers { get; set; } = new();
     public EmailOptions Email { get; set; } = new();
     public BurnTokensOptions BurnTokens { get; set; } = new();
+    public PromptOptions Prompt { get; set; } = new();
     public PlannerOptions Planner { get; set; } = new();
     public ExecutionOptions Execution { get; set; } = new();
     public ValidationOptions Validation { get; set; } = new();
@@ -33,6 +34,21 @@ public class AutoDevOptions
 public class BurnTokensOptions
 {
     public bool? Enabled { get; set; }
+}
+
+public class PromptOptions
+{
+    public int MaxChars { get; set; } = 24000;
+    public int BriefMaxChars { get; set; } = 4000;
+    public int CreativePlanMaxChars { get; set; } = 4000;
+    public int ProjectGoalMaxChars { get; set; } = 1600;
+    public int RoadmapMaxChars { get; set; } = 900;
+    public int BacklogMaxChars { get; set; } = 900;
+    public int MemoryMaxChars { get; set; } = 700;
+    public int ResumeSummaryMaxChars { get; set; } = 4000;
+    public int ResumeSummaryWithLessonsMaxChars { get; set; } = 1200;
+    public int PromptDirectivesMaxChars { get; set; } = 1200;
+    public int PromptDirectivesMinChars { get; set; } = 400;
 }
 
 public class ExecutionOptions

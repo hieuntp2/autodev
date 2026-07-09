@@ -239,7 +239,7 @@ public class RunOrchestrator
             _stage = LifecycleStage.Planned;
             var prompt = _promptBuilder.Build(project, brief, run, creativePlan, _selectedSkills,
                 goal, proposal, _riskAssessment.Level, _opt.Risk, _lessons, _validationCommand,
-                projectPromptDirectives);
+                projectPromptDirectives, _opt.Prompt);
             _promptChars = prompt.Length;
             _promptEstTokens = EstimateTokens(prompt.Length);
             Log($"Prompt prepared: {_promptChars} chars (~{_promptEstTokens} tokens).");
