@@ -16,7 +16,8 @@ public class PromptBuilder
     public string Build(Project project, string brief, RunRecord run,
         string? creativePlan = null, IReadOnlyList<SkillMatch>? skills = null,
         ProjectGoal? goal = null, TaskProposal? proposal = null, RiskLevel? risk = null,
-        Config.RiskOptions? riskPolicy = null, RunLessons? lessons = null)
+        Config.RiskOptions? riskPolicy = null, RunLessons? lessons = null,
+        string? validationCommandOverride = null)
     {
         var sb = new StringBuilder();
 
@@ -103,7 +104,7 @@ public class PromptBuilder
 
         var taskTitle = !string.IsNullOrWhiteSpace(project.CurrentTask) ? project.CurrentTask!.Trim()
                         : proposal?.Title;
-        var validation = proposal?.ValidationCommand ?? project.ValidationCommand;
+        var validation = validationCommandOverride ?? proposal?.ValidationCommand ?? project.ValidationCommand;
 
         sb.AppendLine("## This run's task");
         if (!string.IsNullOrWhiteSpace(taskTitle))
@@ -155,6 +156,40 @@ public class PromptBuilder
         sb.AppendLine();
 
         AppendRequiredOutput(sb, skills);
+        return sb.ToString();
+    }
+
+    public string BuildRepair(Project project, string? taskTitle, string validationCommand,
+        string? validationOutput, IReadOnlyList<string> changedFiles,
+        Config.RiskOptions? riskPolicy = null)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("You are continuing the same AutoDev provider session to repair a failed validation run.");
+        sb.AppendLine("Fix the build/test failure only. Do not expand scope, do not start new features, and do not rewrite unrelated code.");
+        sb.AppendLine();
+        sb.AppendLine("## Project");
+        sb.AppendLine($"- Name: {project.Name}");
+        sb.AppendLine($"- Repo: {project.RepoPath}");
+        if (!string.IsNullOrWhiteSpace(taskTitle))
+            sb.AppendLine($"- Task: {taskTitle!.Trim()}");
+        sb.AppendLine();
+        sb.AppendLine("## Validation command");
+        sb.AppendLine($"`{validationCommand}`");
+        sb.AppendLine();
+        sb.AppendLine("## Validation output tail");
+        sb.AppendLine(Tail(validationOutput ?? string.Empty, 3000));
+        sb.AppendLine();
+        sb.AppendLine("## Changed files so far");
+        if (changedFiles.Count == 0)
+            sb.AppendLine("(none detected)");
+        else
+            foreach (var file in changedFiles.Take(80))
+                sb.AppendLine($"- {file}");
+        sb.AppendLine();
+        sb.AppendLine(GuardrailService.PromptGuardrails(project.AllowRunOnMainBranch, project.AutoPush,
+            project.RepoPath, riskPolicy?.BlockFileDeletions ?? true, riskPolicy?.BlockOutOfProjectChanges ?? true));
+        sb.AppendLine();
+        AppendRequiredOutput(sb, skills: null);
         return sb.ToString();
     }
 
@@ -272,6 +307,9 @@ public class PromptBuilder
     }
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
+
+    private static string Tail(string s, int max) =>
+        s.Length <= max ? s : "...\n" + s[^max..];
 
     /// <summary>Relevant project memory: recent ideas + past decisions, compacted.</summary>
     private static void AppendMemory(StringBuilder sb, ProjectGoal? goal)

@@ -10,6 +10,7 @@ public class AutoDevOptions
     public BurnTokensOptions BurnTokens { get; set; } = new();
     public PlannerOptions Planner { get; set; } = new();
     public ExecutionOptions Execution { get; set; } = new();
+    public ValidationOptions Validation { get; set; } = new();
     public ContinuousOptions Continuous { get; set; } = new();
     public SkillsOptions Skills { get; set; } = new();
     public ProjectMemoryOptions ProjectMemory { get; set; } = new();
@@ -38,6 +39,12 @@ public class ExecutionOptions
 {
     public int IdleTimeoutMinutes { get; set; } = 15;
     public int HeartbeatMinutes { get; set; } = 5;
+}
+
+public class ValidationOptions
+{
+    public bool InferWhenMissing { get; set; } = true;
+    public int MaxRepairAttempts { get; set; } = 2;
 }
 
 /// <summary>

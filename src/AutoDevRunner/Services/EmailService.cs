@@ -30,7 +30,8 @@ public class EmailService
         && !string.IsNullOrWhiteSpace(_opt.PublicKey)
         && !string.IsNullOrWhiteSpace(_opt.ToEmail);
 
-    public string BuildReport(Project project, RunRecord run, ParsedSummary? summary, string? costSummary = null)
+    public string BuildReport(Project project, RunRecord run, ParsedSummary? summary,
+        string? costSummary = null, string? sessionResult = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"AutoDev run report — {project.Name}");
@@ -38,6 +39,8 @@ public class EmailService
         sb.AppendLine($"Provider : {run.Provider}");
         sb.AppendLine($"Branch   : {run.Branch}");
         sb.AppendLine($"Status   : {run.Status}");
+        if (!string.IsNullOrWhiteSpace(sessionResult))
+            sb.AppendLine($"Result   : {sessionResult}");
         if (!string.IsNullOrWhiteSpace(run.Reason))
             sb.AppendLine($"Reason   : {run.Reason}");
         sb.AppendLine($"Started  : {run.StartedAt:u}");

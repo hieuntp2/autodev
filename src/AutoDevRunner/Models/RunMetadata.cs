@@ -68,6 +68,8 @@ public class RunMetadata
 
     public bool ValidationRun { get; set; }
     public bool ValidationPassed { get; set; }
+    public int? RepairAttempts { get; set; }
+    public string? SessionResult { get; set; }
 
     /// <summary>Project-memory files updated this run (e.g. IDEAS.md, DECISIONS.md).</summary>
     public List<string> MemoryUpdates { get; set; } = new();

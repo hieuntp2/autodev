@@ -58,6 +58,9 @@ public class RunOrchestrator
     private int? _outputTokens;
     private decimal? _costUsd;
     private string? _model;
+    private string? _validationCommand;
+    private int? _repairAttempts;
+    private string? _sessionResult;
 
     public RunOrchestrator(
         AppDbContext db, GitService git, GuardrailService guard,
@@ -225,11 +228,12 @@ public class RunOrchestrator
 
             // 3f. Select global AutoDev skills (also match against the proposed title).
             _selectedSkills = SelectSkills(project, brief + "\n" + (proposal?.Title ?? ""), creativePlan, Log);
+            _validationCommand = ResolveValidationCommand(project, proposal, Log);
 
             // 4. Build prompt. Task is now planned.
             _stage = LifecycleStage.Planned;
             var prompt = _promptBuilder.Build(project, brief, run, creativePlan, _selectedSkills,
-                goal, proposal, _riskAssessment.Level, _opt.Risk, _lessons);
+                goal, proposal, _riskAssessment.Level, _opt.Risk, _lessons, _validationCommand);
             _promptChars = prompt.Length;
             _promptEstTokens = EstimateTokens(prompt.Length);
             Log($"Prompt prepared: {_promptChars} chars (~{_promptEstTokens} tokens).");
@@ -252,6 +256,7 @@ public class RunOrchestrator
             }
 
             ProviderInvocation? invocation = null;
+            IAiProvider? successfulProvider = null;
             var timeout = TimeSpan.FromMinutes(Math.Max(1, project.MaxRunMinutes));
             var idleTimeout = TimeSpan.FromMinutes(Math.Max(1, _opt.Execution.IdleTimeoutMinutes));
             var heartbeat = TimeSpan.FromMinutes(Math.Max(1, _opt.Execution.HeartbeatMinutes));
@@ -291,7 +296,10 @@ public class RunOrchestrator
                 // Success ends the run. Any failure (quota/auth/timeout/error) falls
                 // through to the next provider in the priority order, if any.
                 if (invocation.Outcome is ProviderOutcome.Success)
+                {
+                    successfulProvider = provider;
                     break;
+                }
 
                 Log($"{provider.Kind} returned {invocation.Outcome}: {invocation.Reason}");
             }
@@ -406,15 +414,61 @@ public class RunOrchestrator
             }
 
             // 10. Validation command.
-            if (!string.IsNullOrWhiteSpace(project.ValidationCommand))
-                await RunValidationAsync(project, run, timeout, Log, ct);
-            if (!run.ValidationRun || run.ValidationPassed)
-                _stage = LifecycleStage.Validated;
+            if (!string.IsNullOrWhiteSpace(_validationCommand))
+            {
+                await RunValidationAsync(project, run, _validationCommand!, timeout, Log, ct);
+                await RunRepairLoopAsync(project, run, successfulProvider, timeout, idleTimeout, heartbeat,
+                    changed, Log, ct);
+            }
+            else
+            {
+                Log("Validation not run: no validation command configured or inferable.");
+            }
 
-            // 11. Commit (only if changes, build ok-or-not-run, and policy allows).
-            var status = run.ValidationRun && !run.ValidationPassed ? RunStatus.Failed : RunStatus.Success;
-            var doCommit = project.AutoCommit && changed.Count > 0
-                           && (!run.ValidationRun || run.ValidationPassed);
+            if (_repairAttempts is > 0)
+            {
+                changes = await _git.GetChangesAsync(project.RepoPath, ct);
+                changed = changes.Select(c => c.Path).ToList();
+                run.ChangedFiles = string.Join('\n', changed);
+                var repairArtifacts = _artifacts.Track(changed, project.RepoPath);
+                _trackedArtifacts = _artifacts.Merge(repairArtifacts, summary.ArtifactPaths, project.RepoPath);
+
+                var repairRisk = _risk.Assess(changes, project.CurrentTask ?? summary.EffectiveTitle);
+                if ((int)repairRisk.Level >= (int)_riskAssessment.Level) _riskAssessment = repairRisk;
+                var repairGate = EvaluateRiskGate();
+                if (repairGate.Blocked)
+                {
+                    _stage = LifecycleStage.Failed;
+                    run.Reason = repairGate.Hard
+                        ? "Changes left uncommitted — " + repairGate.Why
+                        : "Risky changes left uncommitted (requires manual review): "
+                          + string.Join("; ", _riskAssessment.Reasons);
+                    Log("RISK GATE: " + run.Reason);
+                    await FinalizeAsync(project, run, RunStatus.Paused, summary, logBuffer, ct, commit: false);
+                    return run;
+                }
+
+                guard = _guard.Check(changed);
+                if (!guard.Ok)
+                {
+                    run.Reason = "Guardrail violation: protected files changed: " + string.Join(", ", guard.Violations);
+                    Log(run.Reason);
+                    _stage = LifecycleStage.Failed;
+                    await FinalizeAsync(project, run, RunStatus.Failed, summary, logBuffer, ct, commit: false);
+                    return run;
+                }
+            }
+
+            if (run.ValidationRun && run.ValidationPassed)
+                _stage = LifecycleStage.Validated;
+            else if (run.ValidationRun && !run.ValidationPassed)
+                run.Reason = BuildValidationFailureReason(run.ValidationOutput);
+            else
+                run.Reason = SessionResultFormatter.NotVerifiable;
+
+            // 11. Commit only if final validation passed.
+            var status = ValidationRepairPolicy.DetermineStatus(run.ValidationRun, run.ValidationPassed);
+            var doCommit = status is RunStatus.Success && project.AutoCommit && changed.Count > 0;
             await FinalizeAsync(project, run, status, summary, logBuffer, ct, commit: doCommit);
             return run;
         }
@@ -554,16 +608,75 @@ public class RunOrchestrator
         log($"AI evolved the brief → version {version.Version} (stored in DB; history preserved).");
     }
 
-    private async Task RunValidationAsync(Project project, RunRecord run, TimeSpan timeout,
+    private string? ResolveValidationCommand(Project project, TaskProposal? proposal, Action<string> log)
+    {
+        var configured = proposal?.ValidationCommand ?? project.ValidationCommand;
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured.Trim();
+
+        if (!_opt.Validation.InferWhenMissing)
+            return null;
+
+        var inferred = ValidationCommandInferrer.Infer(project.RepoPath);
+        if (!string.IsNullOrWhiteSpace(inferred))
+            log($"Inferred validation command for this run: {inferred}");
+        return inferred;
+    }
+
+    private async Task RunValidationAsync(Project project, RunRecord run, string command, TimeSpan timeout,
         Action<string> log, CancellationToken ct)
     {
-        log($"--- Validation: {project.ValidationCommand} ---");
-        var (file, args) = SplitCommand(project.ValidationCommand!);
+        log($"--- Validation: {command} ---");
+        var (file, args) = SplitCommand(command);
         var r = await _proc.RunAsync(file, args, project.RepoPath, timeout, log, ct);
         run.ValidationRun = true;
         run.ValidationPassed = r is { ExitCode: 0, TimedOut: false };
         run.ValidationOutput = r.Combined;
         log($"Validation {(run.ValidationPassed ? "PASSED" : "FAILED")} (exit {r.ExitCode})");
+    }
+
+    private async Task RunRepairLoopAsync(Project project, RunRecord run, IAiProvider? provider,
+        TimeSpan timeout, TimeSpan idleTimeout, TimeSpan heartbeat, IReadOnlyList<string> changedFiles,
+        Action<string> log, CancellationToken ct)
+    {
+        if (provider is null || string.IsNullOrWhiteSpace(_validationCommand)) return;
+
+        var currentChanged = changedFiles.ToList();
+        while (ValidationRepairPolicy.ShouldAttemptRepair(
+                   run.ValidationRun, run.ValidationPassed, _repairAttempts ?? 0,
+                   _opt.Validation.MaxRepairAttempts))
+        {
+            var attempt = (_repairAttempts ?? 0) + 1;
+            _repairAttempts = attempt;
+            log($"Repair attempt {attempt}/{_opt.Validation.MaxRepairAttempts} for failed validation.");
+
+            var repairPrompt = _promptBuilder.BuildRepair(project, run.TaskTitle ?? project.CurrentTask,
+                _validationCommand!, run.ValidationOutput, currentChanged, _opt.Risk);
+            var startedAt = DateTimeOffset.UtcNow;
+            var repairInvocation = await provider.RunAsync(repairPrompt, project.RepoPath, timeout, log, ct,
+                idleTimeout, heartbeat);
+            if (provider.Kind is ProviderKind.Codex)
+                repairInvocation = EnrichCodexTokenUsage(repairInvocation, startedAt);
+
+            await UpdateProviderStateAsync(provider.Kind, repairInvocation, ct);
+            if (repairInvocation.Outcome is not ProviderOutcome.Success)
+            {
+                run.Reason = repairInvocation.Reason ?? $"repair attempt {attempt} failed";
+                log($"{provider.Kind} repair attempt returned {repairInvocation.Outcome}: {run.Reason}");
+                break;
+            }
+
+            currentChanged = (await _git.GetChangesAsync(project.RepoPath, ct)).Select(c => c.Path).ToList();
+            await RunValidationAsync(project, run, _validationCommand!, timeout, log, ct);
+        }
+    }
+
+    private static string BuildValidationFailureReason(string? output)
+    {
+        var tail = Tail(output ?? string.Empty, 2000).Trim();
+        return string.IsNullOrWhiteSpace(tail)
+            ? "validation failed"
+            : "validation failed: " + tail;
     }
 
     private async Task UpdateProviderStateAsync(ProviderKind kind, ProviderInvocation inv, CancellationToken ct)
@@ -652,6 +765,8 @@ public class RunOrchestrator
             }
         }
 
+        _sessionResult = SessionResultFormatter.Build(run, _validationCommand);
+
         // Learned = memory updated this run.
         if (_memoryUpdates.Count > 0 && _stage < LifecycleStage.Learned)
             _stage = LifecycleStage.Learned;
@@ -687,7 +802,7 @@ public class RunOrchestrator
         await _db.SaveChangesAsync(ct);
 
         // Email report.
-        var report = _email.BuildReport(project, run, summary, MeasurementSummary());
+        var report = _email.BuildReport(project, run, summary, MeasurementSummary(), _sessionResult);
         var subject = $"[AutoDev] {project.Name} — {status}";
         run.EmailSent = await _email.SendAsync(subject, report, project.Name, status.ToString(), ct);
         await _db.SaveChangesAsync(ct);
@@ -704,6 +819,10 @@ public class RunOrchestrator
 
         var md = new StringBuilder();
         md.AppendLine($"# Run {run.Id} — {project.Name}");
+        md.AppendLine();
+        md.AppendLine("## Session result");
+        md.AppendLine(_sessionResult ?? SessionResultFormatter.Build(run, _validationCommand));
+        md.AppendLine();
         md.AppendLine($"- Provider: {run.Provider}");
         md.AppendLine($"- Branch: {run.Branch}");
         md.AppendLine($"- Status: {run.Status}");
@@ -794,6 +913,8 @@ public class RunOrchestrator
             Artifacts = _trackedArtifacts,
             ValidationRun = run.ValidationRun,
             ValidationPassed = run.ValidationPassed,
+            RepairAttempts = _repairAttempts,
+            SessionResult = _sessionResult,
             MemoryUpdates = _memoryUpdates,
             NextSuggestedTasks = _nextSuggestedTasks,
             TaskSource = _taskSource
@@ -820,6 +941,9 @@ public class RunOrchestrator
             .Take(5)
             .ToList();
     }
+
+    private static string Tail(string s, int max) =>
+        s.Length <= max ? s : "...\n" + s[^max..];
 
     private static (string file, string args) SplitCommand(string command)
     {
