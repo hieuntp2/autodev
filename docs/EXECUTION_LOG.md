@@ -8,3 +8,5 @@
 2026-07-09T08:20:40Z | step 8 | TOKEN phase 4 | tests: 111 green | Added native resume decisions, delta prompts, resume templates, fallback, and sidecar resume tracking.
 2026-07-09T08:23:10Z | step 9 | TOKEN phase 5 | tests: 113 green | Added value-aware burn-mode early stop and maintenance tier toggle.
 2026-07-09T08:24:48Z | step 10 | TOKEN phase 6 | tests: 115 green | Added planner skip policy for successful in-progress tasks.
+2026-07-09T14:22:46Z | step 11 | DB phase 0 | tests: 123 green | Not-verifiable runs with clean changes now finish Success, can commit, keep NOT VERIFIABLE reporting, and stay out of failure lessons.
+2026-07-09T14:22:46Z | step 12 | DB phase 1 | tests: 123 green | Added EF migration foundation, InitialCreate baseline, legacy EnsureCreated adoption path, and database migration docs.

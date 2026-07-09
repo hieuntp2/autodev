@@ -39,6 +39,7 @@ var autoDevOptions = builder.Configuration.GetSection(AutoDevOptions.SectionName
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? "Host=localhost;Port=5432;Database=autodev;Username=postgres;Password=postgres";
 builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(connectionString));
+builder.Services.AddScoped<DatabaseInitializer>();
 
 // ---- Core services ----
 builder.Services.AddHttpClient();
@@ -90,8 +91,9 @@ var app = builder.Build();
 // ---- Initialize DB + seed provider states ----
 using (var scope = app.Services.CreateScope())
 {
+    await scope.ServiceProvider.GetRequiredService<DatabaseInitializer>().InitializeAsync();
+
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.EnsureCreatedAsync();
 
     var orphaned = await db.Runs
         .Where(r => (r.Status == RunStatus.Running || r.Status == RunStatus.Pending) && r.FinishedAt == null)
