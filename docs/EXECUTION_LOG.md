@@ -13,3 +13,4 @@
 2026-07-09T14:47:56Z | DB phase 2 | tests: 125 green | Added queryable run metrics, sidecar mirroring, and per-project metrics aggregation endpoint.
 2026-07-09T14:52:22Z | DB phase 3 | tests: 128 green | Added versioned DB prompt directives, prompt API edit/revert, file mirror seeding, and AI proposal adoption.
 2026-07-09T14:58:06Z | DB phase 4 | tests: 134 green | Added durable learning state, DB-backed repeated-failure memory, and opt-in audited AI settings self-tuning.
+2026-07-09T15:02:25Z | DB phase 5 | tests: 135 green | Surfaced metrics, prompt directive edit/history/revert, learning state, repeated failures, and settings audit data in API/dashboard.

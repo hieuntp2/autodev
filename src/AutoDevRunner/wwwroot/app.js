@@ -183,13 +183,83 @@ function artifactGallery(projectId, artifacts) {
   }).join("")}</div>`;
 }
 
+function pct(value) {
+  return `${Math.round((value || 0) * 100)}%`;
+}
+
+function money(value) {
+  return `$${Number(value || 0).toFixed(4)}`;
+}
+
+function metricsPanel(m) {
+  if (!m) return `<p class="muted">No metrics available yet.</p>`;
+  const trend = m.trend || [];
+  return `
+    <div class="cards">
+      <div class="card"><div class="label">Runs</div><div class="value">${m.runCount || 0}</div></div>
+      <div class="card"><div class="label">Success rate</div><div class="value">${pct(m.successRate)}</div></div>
+      <div class="card"><div class="label">Cost</div><div class="value">${money(m.totalCostUsd)}</div></div>
+      <div class="card"><div class="label">Tokens</div><div class="value">${((m.totalInputTokens || 0) + (m.totalOutputTokens || 0)).toLocaleString()}</div></div>
+      <div class="card"><div class="label">Resume saved</div><div class="value">${(m.estimatedTokensSavedByResume || 0).toLocaleString()}</div></div>
+    </div>
+    ${trend.length ? `<table style="margin-top:12px"><thead><tr><th>Run</th><th>Status</th><th>Tier</th><th>Tokens</th><th>Cost</th><th>Resumed</th></tr></thead><tbody>
+      ${trend.map(t => `<tr>
+        <td>#${t.runId}</td>
+        <td>${badge(t.status)}</td>
+        <td>${esc(t.tier || "—")}</td>
+        <td>${((t.inputTokens || 0) + (t.outputTokens || 0)).toLocaleString()}</td>
+        <td>${money(t.costUsd)}</td>
+        <td>${t.resumed ? "yes" : "no"}</td>
+      </tr>`).join("")}
+    </tbody></table>` : `<p class="muted">No trend data yet.</p>`}
+  `;
+}
+
+function learningPanel(l) {
+  if (!l) return `<p class="muted">No learning state available yet.</p>`;
+  const failing = l.repeatedFailingTasks || [];
+  const changes = l.settingChanges || [];
+  return `
+    <div class="cards">
+      <div class="card"><div class="label">Total runs</div><div class="value">${l.totalRuns || 0}</div></div>
+      <div class="card"><div class="label">Successes</div><div class="value">${l.successes || 0}</div></div>
+      <div class="card"><div class="label">Failures</div><div class="value">${l.failures || 0}</div></div>
+      <div class="card"><div class="label">Not verified</div><div class="value">${l.notVerified || 0}</div></div>
+      <div class="card"><div class="label">Rolling rate</div><div class="value">${pct(l.rollingSuccessRate)}</div></div>
+    </div>
+    <h3>Repeated failing tasks</h3>
+    ${failing.length ? `<table><thead><tr><th>Task</th><th>Attempts</th><th>Failures</th><th>Last outcome</th><th>Last attempt</th></tr></thead><tbody>
+      ${failing.map(t => `<tr>
+        <td>${esc(t.taskTitle)}</td>
+        <td>${t.attempts}</td>
+        <td>${t.failures}</td>
+        <td>${esc(t.lastOutcome)}</td>
+        <td>${fmt(t.lastAttemptAt)}</td>
+      </tr>`).join("")}
+    </tbody></table>` : `<p class="muted">No repeated failures recorded.</p>`}
+    <h3>Setting changes</h3>
+    ${changes.length ? `<table><thead><tr><th>Key</th><th>Old</th><th>New</th><th>Source</th><th>When</th></tr></thead><tbody>
+      ${changes.map(c => `<tr>
+        <td>${esc(c.key)}</td>
+        <td class="mono">${esc(c.oldValue || "—")}</td>
+        <td class="mono">${esc(c.newValue || "—")}</td>
+        <td>${esc(c.source)}</td>
+        <td>${fmt(c.createdAt)}</td>
+      </tr>`).join("")}
+    </tbody></table>` : `<p class="muted">No AI setting changes recorded.</p>`}
+  `;
+}
+
 // ---- Project detail ----
 views.projectDetail = async (id) => {
-  const [d, goal, lifecycle, artifacts] = await Promise.all([
+  const [d, goal, lifecycle, artifacts, metrics, prompt, learning] = await Promise.all([
     api(`/projects/${id}`),
     api(`/projects/${id}/goal`).catch(() => null),
     api(`/projects/${id}/lifecycle?take=8`).catch(() => []),
-    api(`/projects/${id}/artifacts`).catch(() => [])
+    api(`/projects/${id}/artifacts`).catch(() => []),
+    api(`/projects/${id}/metrics?take=12`).catch(() => null),
+    api(`/projects/${id}/prompt`).catch(() => null),
+    api(`/projects/${id}/learning`).catch(() => null)
   ]);
   const p = d.project;
   const latestMeta = (lifecycle && lifecycle[0]) || null;
@@ -206,6 +276,7 @@ views.projectDetail = async (id) => {
       <div class="k">Repo</div><div class="mono">${esc(p.repoPath)}</div>
       <div class="k">Target platform</div><div>${p.projectType ? esc(p.projectType) : `<span class="muted">— (not enforced)</span>`}</div>
       <div class="k">AI may evolve brief</div><div>${p.allowAiEditBrief ? badge("on") : badge("off")}</div>
+      <div class="k">AI may tune settings</div><div>${p.allowAiEditSettings ? badge("on") : badge("off")}</div>
       <div class="k">Enabled</div><div>${p.enabled ? badge("on") : badge("off")} ${p.paused ? badge("Paused") : ""}</div>
       <div class="k">Priority</div><div>${p.priority}</div>
       <div class="k">Providers</div><div>${esc(p.providerPriority)}</div>
@@ -232,6 +303,22 @@ views.projectDetail = async (id) => {
       ? `<pre class="goal">${esc((d.brief.content || "").slice(0, 2000))}</pre>`
       : `<p class="muted">No brief stored yet. Click <strong>Edit</strong> to write one (or it will be seeded from the brief file on the first run).</p>`}
     <div id="briefHistoryBox"></div>
+
+    <h2>Run metrics</h2>
+    ${metricsPanel(metrics)}
+
+    <h2>Prompt directives <span class="muted">${prompt ? `v${prompt.version} · ${esc(prompt.author)} · ${fmt(prompt.createdAt)}` : badge("off")}</span></h2>
+    <div class="field">
+      <textarea id="promptDirectivesEdit" rows="8" placeholder="Project-specific standing directives for future runs.">${esc(prompt?.content || "")}</textarea>
+      <div style="margin-top:8px">
+        <button class="sm" id="savePromptDirectives">Save directives</button>
+        <button class="sm" id="promptHistory">History</button>
+      </div>
+    </div>
+    <div id="promptHistoryBox"></div>
+
+    <h2>Learning state</h2>
+    ${learningPanel(learning)}
 
     <h2>Task lifecycle</h2>
     ${latestMeta ? `
@@ -278,6 +365,34 @@ views.projectDetail = async (id) => {
       box.innerHTML = versions.map(v =>
         `<details><summary>v${v.version} · <strong>${esc(v.author)}</strong> · ${fmt(v.createdAt)}${v.note ? ` · <span class="muted">${esc(v.note)}</span>` : ""}</summary><pre>${esc(v.content)}</pre></details>`
       ).join("") || `<p class="muted">No history.</p>`;
+    } catch (e) { toast(e.message, true); }
+  };
+  $("#savePromptDirectives").onclick = async () => {
+    try {
+      await api(`/projects/${id}/prompt`, {
+        method: "PUT",
+        body: JSON.stringify({ content: $("#promptDirectivesEdit").value, note: "edited in dashboard" })
+      });
+      toast("Prompt directives saved.");
+      render();
+    } catch (e) { toast(e.message, true); }
+  };
+  $("#promptHistory").onclick = async () => {
+    const box = $("#promptHistoryBox");
+    if (box.innerHTML) { box.innerHTML = ""; return; }
+    try {
+      const versions = await api(`/projects/${id}/prompt/history`);
+      box.innerHTML = versions.map(v =>
+        `<details><summary>v${v.version} · <strong>${esc(v.author)}</strong> · ${fmt(v.createdAt)}${v.note ? ` · <span class="muted">${esc(v.note)}</span>` : ""} <button class="sm" data-prompt-revert="${v.version}">Revert</button></summary><pre>${esc(v.content)}</pre></details>`
+      ).join("") || `<p class="muted">No history.</p>`;
+      box.querySelectorAll("button[data-prompt-revert]").forEach(b => b.onclick = async (ev) => {
+        ev.preventDefault();
+        try {
+          await api(`/projects/${id}/prompt/revert/${b.dataset.promptRevert}`, { method: "POST" });
+          toast("Prompt directives reverted.");
+          render();
+        } catch (e) { toast(e.message, true); }
+      });
     } catch (e) { toast(e.message, true); }
   };
 };
@@ -446,6 +561,7 @@ function openProjectModal(p, briefContent) {
       <div class="muted" style="font-size:11px">Stored in the DB (versioned). The planner always uses the latest version.</div>
     </div>
     <div class="field row"><input type="checkbox" id="f-aiedit" ${p.allowAiEditBrief ? "checked" : ""}><label>Allow AI to evolve this brief (saved as new versions)</label></div>
+    <div class="field row"><input type="checkbox" id="f-aisettings" ${p.allowAiEditSettings ? "checked" : ""}><label>Allow AI to tune validation/provider/time settings</label></div>
     <details style="margin-bottom:12px"><summary class="muted">Advanced: seed file (fallback)</summary>
       <div class="field"><label>Brief file path</label><input type="text" id="f-brief" value="${esc(p.briefPath || "ai-autonomous.md")}">
       <div class="muted" style="font-size:11px">Only used to seed version 1 if no brief is stored yet.</div></div>
@@ -490,6 +606,7 @@ function openProjectModal(p, briefContent) {
       autoPush: $("#f-push").checked,
       allowRunOnMainBranch: $("#f-main").checked,
       allowAiEditBrief: $("#f-aiedit").checked,
+      allowAiEditSettings: $("#f-aisettings").checked,
       enabled: $("#f-enabled").checked,
       notes: $("#f-notes").value
     };

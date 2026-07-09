@@ -130,6 +130,40 @@ public static class ApiEndpoints
             return Results.Ok(PromptDto(reverted));
         });
 
+        api.MapGet("/projects/{id:int}/learning", async (
+            int id,
+            AppDbContext db,
+            IOptions<AutoDevOptions> opt) =>
+        {
+            if (!await db.Projects.AsNoTracking().AnyAsync(p => p.Id == id))
+                return Results.NotFound();
+            var state = await db.ProjectLearningStates.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.ProjectId == id);
+            var tasks = await db.ProjectTaskStats.AsNoTracking()
+                .Where(s => s.ProjectId == id)
+                .ToListAsync();
+            var changes = await db.ProjectSettingChanges.AsNoTracking()
+                .Where(c => c.ProjectId == id)
+                .OrderByDescending(c => c.CreatedAt)
+                .Take(20)
+                .ToListAsync();
+            return Results.Ok(ProjectLearningSurface.Build(
+                state, tasks, changes, opt.Value.Learning.RepeatedFailureThreshold));
+        });
+
+        api.MapGet("/projects/{id:int}/settings/changes", async (int id, AppDbContext db, int? take) =>
+        {
+            if (!await db.Projects.AsNoTracking().AnyAsync(p => p.Id == id))
+                return Results.NotFound();
+            var changes = await db.ProjectSettingChanges.AsNoTracking()
+                .Where(c => c.ProjectId == id)
+                .OrderByDescending(c => c.CreatedAt)
+                .Take(take ?? 50)
+                .Select(c => new ProjectSettingChangeView(c.Key, c.OldValue, c.NewValue, c.Source, c.CreatedAt))
+                .ToListAsync();
+            return Results.Ok(changes);
+        });
+
         // Full brief version history (newest first).
         api.MapGet("/projects/{id:int}/briefs", async (int id, AppDbContext db) =>
         {
