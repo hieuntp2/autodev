@@ -525,7 +525,7 @@ public class RunOrchestrator
                 run.Reason = SessionResultFormatter.NotVerifiable;
 
             // 11. Commit only if final validation passed.
-            var status = ValidationRepairPolicy.DetermineStatus(run.ValidationRun, run.ValidationPassed);
+            var status = ValidationRepairPolicy.DetermineStatus(run.ValidationRun, run.ValidationPassed, changed.Count > 0);
             var doCommit = status is RunStatus.Success && project.AutoCommit && changed.Count > 0;
             await FinalizeAsync(project, run, status, summary, logBuffer, ct, commit: doCommit);
             return run;
@@ -981,6 +981,7 @@ public class RunOrchestrator
             Artifacts = _trackedArtifacts,
             ValidationRun = run.ValidationRun,
             ValidationPassed = run.ValidationPassed,
+            NotVerified = run.Status is RunStatus.Success && !run.ValidationRun,
             RepairAttempts = _repairAttempts,
             SessionResult = _sessionResult,
             PromptDirectivesUpdated = _promptDirectivesUpdated,

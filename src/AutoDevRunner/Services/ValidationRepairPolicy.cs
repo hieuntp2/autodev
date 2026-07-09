@@ -9,8 +9,13 @@ public static class ValidationRepairPolicy
     public static bool ShouldAttemptRepair(bool validationRun, bool validationPassed, int attempts, int maxAttempts) =>
         validationRun && !validationPassed && attempts < Math.Max(0, maxAttempts);
 
-    public static RunStatus DetermineStatus(bool validationRun, bool validationPassed) =>
-        validationRun && validationPassed ? RunStatus.Success : RunStatus.Failed;
+    public static RunStatus DetermineStatus(bool validationRun, bool validationPassed, bool hasChanges = false)
+    {
+        if (validationRun)
+            return validationPassed ? RunStatus.Success : RunStatus.Failed;
+
+        return hasChanges ? RunStatus.Success : RunStatus.Failed;
+    }
 
     public static ValidationRepairOutcome Evaluate(IReadOnlyList<bool> validationResults, int maxRepairAttempts)
     {

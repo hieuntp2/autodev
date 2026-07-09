@@ -27,6 +27,21 @@ public class SessionResultFormatterTests
     }
 
     [Fact]
+    public void Successful_unvalidated_run_still_reports_not_verifiable()
+    {
+        var run = new RunRecord
+        {
+            Status = RunStatus.Success,
+            ValidationRun = false,
+            Reason = SessionResultFormatter.NotVerifiable
+        };
+
+        var result = SessionResultFormatter.Build(run, null);
+
+        Assert.Equal(SessionResultFormatter.NotVerifiable, result);
+    }
+
+    [Fact]
     public void Failed_run_reports_reason()
     {
         var run = new RunRecord { Status = RunStatus.Failed, Reason = "validation failed: compile error" };

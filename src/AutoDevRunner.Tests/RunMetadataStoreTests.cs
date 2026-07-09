@@ -41,6 +41,8 @@ public class RunMetadataStoreTests : IDisposable
             OutputTokens = 250,
             CostUsd = 0.0345m,
             Model = "claude-sonnet-5",
+            NotVerified = true,
+            SessionResult = SessionResultFormatter.NotVerifiable,
             Skills = new() { new RunSkillRef("pixel-animation-artist", new[] { "sprite sheet" }) },
             Artifacts = new() { new ArtifactRef("assets/x/x_sheet.png", ArtifactKind.SpriteSheet, "pixel-animation-artist", 123) }
         };
@@ -64,6 +66,8 @@ public class RunMetadataStoreTests : IDisposable
         Assert.Equal(250, read.OutputTokens);
         Assert.Equal(0.0345m, read.CostUsd);
         Assert.Equal("claude-sonnet-5", read.Model);
+        Assert.True(read.NotVerified);
+        Assert.Equal(SessionResultFormatter.NotVerifiable, read.SessionResult);
     }
 
     [Fact]

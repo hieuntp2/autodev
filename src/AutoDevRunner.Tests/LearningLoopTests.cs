@@ -26,7 +26,8 @@ public class RunHistoryServiceTests : IDisposable
     public void Dispose() { try { Directory.Delete(_repo, true); } catch { } }
 
     private async Task WriteRun(int id, string task, string status, int dayOffset,
-        string? reason = null, IEnumerable<string>? next = null)
+        string? reason = null, IEnumerable<string>? next = null, bool validationRun = true,
+        string? sessionResult = null, bool notVerified = false)
     {
         var md = Path.Combine(_runsDir, $"2026070{dayOffset}-run{id}.md");
         await _store.WriteAsync(md, new RunMetadata
@@ -35,6 +36,10 @@ public class RunHistoryServiceTests : IDisposable
             Task = task,
             Status = status,
             Reason = reason,
+            ValidationRun = validationRun,
+            ValidationPassed = validationRun && status.Equals("Success", StringComparison.OrdinalIgnoreCase),
+            SessionResult = sessionResult,
+            NotVerified = notVerified,
             StartedAt = new DateTime(2026, 7, dayOffset, 0, 0, 0, DateTimeKind.Utc),
             NextSuggestedTasks = next?.ToList() ?? new List<string>()
         });
@@ -68,6 +73,21 @@ public class RunHistoryServiceTests : IDisposable
     {
         await WriteRun(1, "Add hop animation", "Failed", 1);
         var lessons = _history.Analyze(_repo, window: 5, failureThreshold: 2);
+        Assert.Empty(lessons.RepeatedlyFailingTasks);
+    }
+
+    [Fact]
+    public async Task Not_verifiable_success_is_not_counted_as_failure()
+    {
+        await WriteRun(1, "Add docs", "Success", 1,
+            validationRun: false,
+            sessionResult: SessionResultFormatter.NotVerifiable,
+            notVerified: true);
+
+        var lessons = _history.Analyze(_repo, window: 5, failureThreshold: 1);
+
+        var lesson = Assert.Single(lessons.Recent);
+        Assert.False(lesson.Failed);
         Assert.Empty(lessons.RepeatedlyFailingTasks);
     }
 

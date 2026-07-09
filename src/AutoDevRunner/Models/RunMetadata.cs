@@ -29,8 +29,8 @@ public record RunSkillRef(string Id, IReadOnlyList<string> MatchedKeywords);
 /// Machine-readable sidecar for a run, written next to the run's markdown log at
 /// <c>&lt;repo&gt;/.ai-runner/runs/&lt;stamp&gt;-run&lt;id&gt;.json</c>. This is how the dashboard
 /// reads task lifecycle, selected skills, risk and artifacts without any DB
-/// schema change (the app uses EF EnsureCreated, so new columns would break
-/// existing databases).
+/// schema change. Sidecars remain the repo-local audit trail even now that the
+/// application schema is managed by EF migrations.
 /// </summary>
 public class RunMetadata
 {
@@ -71,6 +71,7 @@ public class RunMetadata
 
     public bool ValidationRun { get; set; }
     public bool ValidationPassed { get; set; }
+    public bool NotVerified { get; set; }
     public int? RepairAttempts { get; set; }
     public string? SessionResult { get; set; }
     public bool PromptDirectivesUpdated { get; set; }

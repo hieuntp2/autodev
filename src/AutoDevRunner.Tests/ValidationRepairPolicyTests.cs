@@ -34,11 +34,33 @@ public class ValidationRepairPolicyTests
     }
 
     [Fact]
-    public void Missing_validation_is_not_success()
+    public void Missing_validation_without_changes_is_not_success()
     {
         var outcome = ValidationRepairPolicy.Evaluate(Array.Empty<bool>(), maxRepairAttempts: 2);
 
         Assert.Equal(RunStatus.Failed, outcome.Status);
         Assert.Equal(0, outcome.RepairAttempts);
+    }
+
+    [Fact]
+    public void Missing_validation_with_changes_is_success_so_it_can_commit()
+    {
+        var status = ValidationRepairPolicy.DetermineStatus(
+            validationRun: false,
+            validationPassed: false,
+            hasChanges: true);
+
+        Assert.Equal(RunStatus.Success, status);
+    }
+
+    [Fact]
+    public void Failed_validation_stays_failed_even_with_changes()
+    {
+        var status = ValidationRepairPolicy.DetermineStatus(
+            validationRun: true,
+            validationPassed: false,
+            hasChanges: true);
+
+        Assert.Equal(RunStatus.Failed, status);
     }
 }
