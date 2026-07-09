@@ -3,7 +3,8 @@ namespace AutoDevRunner.Services;
 public sealed record PromptDirectivesUpdateResult(
     bool Updated,
     string? ArchiveRelativePath = null,
-    string? Reason = null);
+    string? Reason = null,
+    string? Content = null);
 
 public class PromptDirectivesService
 {
@@ -84,7 +85,24 @@ public class PromptDirectivesService
             log?.Invoke($"Pruned {pruned} old prompt directive history file(s).");
 
         log?.Invoke("Prompt directives evolved -> " + (archiveRel ?? "PROMPT.md"));
-        return new PromptDirectivesUpdateResult(true, archiveRel);
+        return new PromptDirectivesUpdateResult(true, archiveRel, Content: proposal.Trim());
+    }
+
+    public async Task<bool> WriteMirrorAsync(string repoPath, string? content, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return false;
+
+        try
+        {
+            var runnerDir = RunnerDir(repoPath);
+            Directory.CreateDirectory(runnerDir);
+            await File.WriteAllTextAsync(PromptPath(repoPath), content.Trim(), ct);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static int PruneHistory(string historyDir)

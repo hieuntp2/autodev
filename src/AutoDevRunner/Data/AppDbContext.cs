@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
     public DbSet<RunRecord> Runs => Set<RunRecord>();
     public DbSet<ProviderState> ProviderStates => Set<ProviderState>();
     public DbSet<ProjectBrief> ProjectBriefs => Set<ProjectBrief>();
+    public DbSet<PromptDirective> PromptDirectives => Set<PromptDirective>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -30,6 +31,14 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
         b.Entity<ProjectBrief>().HasIndex(br => new { br.ProjectId, br.Version }).IsUnique();
         b.Entity<ProjectBrief>().Property(br => br.Author).HasConversion<string>();
+
+        b.Entity<PromptDirective>()
+            .HasOne(pr => pr.Project)
+            .WithMany(p => p.PromptDirectives)
+            .HasForeignKey(pr => pr.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PromptDirective>().HasIndex(pr => new { pr.ProjectId, pr.Version }).IsUnique();
+        b.Entity<PromptDirective>().Property(pr => pr.Author).HasConversion<string>();
 
         // Store enums as strings for readable DB rows.
         b.Entity<Project>().Property(p => p.LastRunStatus).HasConversion<string>();

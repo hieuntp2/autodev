@@ -11,3 +11,4 @@
 2026-07-09T14:22:46Z | step 11 | DB phase 0 | tests: 123 green | Not-verifiable runs with clean changes now finish Success, can commit, keep NOT VERIFIABLE reporting, and stay out of failure lessons.
 2026-07-09T14:22:46Z | step 12 | DB phase 1 | tests: 123 green | Added EF migration foundation, InitialCreate baseline, legacy EnsureCreated adoption path, and database migration docs.
 2026-07-09T14:47:56Z | DB phase 2 | tests: 125 green | Added queryable run metrics, sidecar mirroring, and per-project metrics aggregation endpoint.
+2026-07-09T14:52:22Z | DB phase 3 | tests: 128 green | Added versioned DB prompt directives, prompt API edit/revert, file mirror seeding, and AI proposal adoption.

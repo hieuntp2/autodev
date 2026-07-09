@@ -84,4 +84,5 @@ public class Project
 
     public List<RunRecord> Runs { get; set; } = new();
     public List<ProjectBrief> Briefs { get; set; } = new();
+    public List<PromptDirective> PromptDirectives { get; set; } = new();
 }

@@ -82,6 +82,54 @@ public static class ApiEndpoints
             return Results.Ok(RunMetricsAggregator.Aggregate(runs, take ?? 20));
         });
 
+        api.MapGet("/projects/{id:int}/prompt", async (int id, AppDbContext db) =>
+        {
+            if (!await db.Projects.AsNoTracking().AnyAsync(p => p.Id == id))
+                return Results.NotFound();
+            var prompt = await ProjectPromptService.GetLatestAsync(db, id);
+            return Results.Ok(prompt is null ? null : PromptDto(prompt));
+        });
+
+        api.MapGet("/projects/{id:int}/prompt/history", async (int id, AppDbContext db) =>
+        {
+            if (!await db.Projects.AsNoTracking().AnyAsync(p => p.Id == id))
+                return Results.NotFound();
+            var versions = await ProjectPromptService.GetHistoryAsync(db, id);
+            return Results.Ok(versions.Select(PromptDto));
+        });
+
+        api.MapPut("/projects/{id:int}/prompt", async (
+            int id,
+            UpdatePromptDirectiveDto dto,
+            AppDbContext db,
+            PromptDirectivesService filePrompt) =>
+        {
+            var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id);
+            if (project is null) return Results.NotFound();
+            var version = await ProjectPromptService.AddVersionIfChangedAsync(
+                db, id, dto.Content, PromptDirectiveAuthor.User, dto.Note ?? "edited in UI");
+            await db.SaveChangesAsync();
+            var latest = version ?? await ProjectPromptService.GetLatestAsync(db, id);
+            if (latest is not null)
+                await filePrompt.WriteMirrorAsync(project.RepoPath, latest.Content);
+            return Results.Ok(latest is null ? null : PromptDto(latest));
+        });
+
+        api.MapPost("/projects/{id:int}/prompt/revert/{version:int}", async (
+            int id,
+            int version,
+            AppDbContext db,
+            PromptDirectivesService filePrompt) =>
+        {
+            var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id);
+            if (project is null) return Results.NotFound();
+            var reverted = await ProjectPromptService.RevertAsNewVersionAsync(db, id, version);
+            if (reverted is null) return Results.NotFound();
+            await db.SaveChangesAsync();
+            await filePrompt.WriteMirrorAsync(project.RepoPath, reverted.Content);
+            return Results.Ok(PromptDto(reverted));
+        });
+
         // Full brief version history (newest first).
         api.MapGet("/projects/{id:int}/briefs", async (int id, AppDbContext db) =>
         {
@@ -397,6 +445,9 @@ public static class ApiEndpoints
     private static SkillDto SkillToDto(SkillManifest s) => new(
         s.Id, s.Name, s.Version, s.Description, s.EffectiveEnabled,
         s.Triggers, s.InvocationHint, s.SourcePath);
+
+    private static PromptDirectiveVersionDto PromptDto(PromptDirective p) => new(
+        p.Version, p.Author.ToString(), p.Note, p.CreatedAt, p.Content);
 
     private static async Task<IResult> SetFlag(AppDbContext db, int id, Action<Project> mutate)
     {

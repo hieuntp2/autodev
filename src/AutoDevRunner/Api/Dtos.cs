@@ -46,6 +46,15 @@ public record BriefVersionDto(
     DateTime CreatedAt,
     string Content);
 
+public record PromptDirectiveVersionDto(
+    int Version,
+    string Author,
+    string? Note,
+    DateTime CreatedAt,
+    string Content);
+
+public record UpdatePromptDirectiveDto(string Content, string? Note);
+
 public record OverviewDto(
     int TotalProjects,
     int EnabledProjects,

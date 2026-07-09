@@ -253,7 +253,7 @@ public class RunOrchestrator
                 _tier = TaskTier.Standard;
             }
             Log($"Model tier selected: {_tier}");
-            var projectPromptDirectives = await _promptDirectives.LoadAsync(project.RepoPath, ct);
+            var projectPromptDirectives = await LoadPromptDirectivesAsync(project, ct);
 
             // 4. Build prompt. Task is now planned.
             _stage = LifecycleStage.Planned;
@@ -422,8 +422,7 @@ public class RunOrchestrator
             await MaybeEvolveBriefAsync(project, run, Log, ct);
             if (project.AllowAiEditBrief)
             {
-                var promptUpdate = await _promptDirectives.AdoptProposalAsync(project.RepoPath, DateTime.UtcNow, Log, ct);
-                _promptDirectivesUpdated = promptUpdate.Updated;
+                await MaybeEvolvePromptDirectivesAsync(project, run, Log, ct);
             }
 
             // 8. Record changed files (+ status for risk) and track generated artifacts.
@@ -641,6 +640,27 @@ public class RunOrchestrator
         return fileBrief;
     }
 
+    private async Task<string?> LoadPromptDirectivesAsync(Project project, CancellationToken ct)
+    {
+        var dbPrompt = await ProjectPromptService.GetLatestContentAsync(_db, project.Id, ct);
+        if (!string.IsNullOrWhiteSpace(dbPrompt))
+        {
+            await _promptDirectives.WriteMirrorAsync(project.RepoPath, dbPrompt, ct);
+            return dbPrompt;
+        }
+
+        var filePrompt = await _promptDirectives.LoadAsync(project.RepoPath, ct);
+        if (string.IsNullOrWhiteSpace(filePrompt)) return null;
+
+        var seeded = await ProjectPromptService.AddVersionIfChangedAsync(
+            _db, project.Id, filePrompt, PromptDirectiveAuthor.Seed, "seeded from .ai-runner/PROMPT.md", ct);
+        if (seeded is not null)
+            await _db.SaveChangesAsync(ct);
+
+        await _promptDirectives.WriteMirrorAsync(project.RepoPath, filePrompt, ct);
+        return filePrompt;
+    }
+
     /// <summary>
     /// When the project allows it, import an AI-proposed brief revision left at
     /// .ai-runner/brief-proposal.md into the DB as a NEW version (history preserved),
@@ -665,6 +685,26 @@ public class RunOrchestrator
 
         await _db.SaveChangesAsync(ct);
         log($"AI evolved the brief → version {version.Version} (stored in DB; history preserved).");
+    }
+
+    private async Task MaybeEvolvePromptDirectivesAsync(Project project, RunRecord run, Action<string> log, CancellationToken ct)
+    {
+        var promptUpdate = await _promptDirectives.AdoptProposalAsync(project.RepoPath, DateTime.UtcNow, log, ct);
+        if (!promptUpdate.Updated || string.IsNullOrWhiteSpace(promptUpdate.Content))
+            return;
+
+        var version = await ProjectPromptService.AddVersionIfChangedAsync(
+            _db, project.Id, promptUpdate.Content, PromptDirectiveAuthor.Ai,
+            $"AI-evolved during run #{run.Id}", ct);
+        if (version is null)
+        {
+            log("AI prompt directives proposal was unchanged - DB version not added.");
+            return;
+        }
+
+        await _db.SaveChangesAsync(ct);
+        _promptDirectivesUpdated = true;
+        log($"AI evolved prompt directives -> version {version.Version} (stored in DB; file mirror updated).");
     }
 
     private string? ResolveValidationCommand(Project project, TaskProposal? proposal, Action<string> log)
