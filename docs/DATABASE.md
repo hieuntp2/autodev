@@ -4,6 +4,26 @@ AutoDev Runner uses PostgreSQL through EF Core migrations. Startup no longer
 uses `EnsureCreated`; every schema change must be represented by a checked-in
 migration under `src/AutoDevRunner/Migrations/`.
 
+## Connection String (no secrets in git)
+
+The committed `appsettings.json` holds a **placeholder** password and must never
+contain a real secret. Provide the real connection string in one of two ways,
+both of which override `appsettings.json`:
+
+- **Local development:** copy `appsettings.Local.example.json` to
+  `appsettings.Local.json` (git-ignored) and fill in the real password. The app
+  loads it last, so it wins over `appsettings.json`.
+- **Published app / Windows Task Scheduler:** `appsettings.Local.json` is not
+  deployed, so set an environment variable instead:
+
+  ```powershell
+  setx ConnectionStrings__Postgres "Host=localhost;Port=5433;Database=autodev;Username=postgres;Password=<real>"
+  ```
+
+  (The double underscore `__` is how .NET maps the env var to the
+  `ConnectionStrings:Postgres` config key.) PostgreSQL currently listens on
+  **port 5433** on this machine.
+
 ## Tooling
 
 Install the EF CLI once on a development machine:

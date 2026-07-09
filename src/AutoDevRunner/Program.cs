@@ -37,7 +37,7 @@ var autoDevOptions = builder.Configuration.GetSection(AutoDevOptions.SectionName
 
 // ---- Storage (PostgreSQL) ----
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
-    ?? "Host=localhost;Port=5432;Database=autodev;Username=postgres;Password=postgres";
+    ?? "Host=localhost;Port=5433;Database=autodev;Username=postgres;Password=postgres";
 builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(connectionString));
 builder.Services.AddScoped<DatabaseInitializer>();
 
