@@ -57,4 +57,19 @@ public class RunRecord
 
     /// <summary>Assessed risk level for this run (Safe/Normal/Risky).</summary>
     public string? Risk { get; set; }
+
+    // --- Queryable usage/session metrics (also mirrored to the run sidecar) ---
+
+    public int? PromptChars { get; set; }
+    public int? PromptEstTokens { get; set; }
+    public int? InputTokens { get; set; }
+    public int? OutputTokens { get; set; }
+    public decimal? CostUsd { get; set; }
+    public string? Model { get; set; }
+    public string? Tier { get; set; }
+    public bool? Resumed { get; set; }
+    public int? RepairAttempts { get; set; }
+    public string? SessionResult { get; set; }
+    public bool? ValidationInferred { get; set; }
+    public bool? NotVerified { get; set; }
 }

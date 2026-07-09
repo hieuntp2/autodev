@@ -71,6 +71,7 @@ public class RunMetadata
 
     public bool ValidationRun { get; set; }
     public bool ValidationPassed { get; set; }
+    public bool ValidationInferred { get; set; }
     public bool NotVerified { get; set; }
     public int? RepairAttempts { get; set; }
     public string? SessionResult { get; set; }

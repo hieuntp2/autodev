@@ -72,6 +72,16 @@ public static class ApiEndpoints
             });
         });
 
+        api.MapGet("/projects/{id:int}/metrics", async (int id, AppDbContext db, int? take) =>
+        {
+            if (!await db.Projects.AsNoTracking().AnyAsync(p => p.Id == id))
+                return Results.NotFound();
+            var runs = await db.Runs.AsNoTracking()
+                .Where(r => r.ProjectId == id)
+                .ToListAsync();
+            return Results.Ok(RunMetricsAggregator.Aggregate(runs, take ?? 20));
+        });
+
         // Full brief version history (newest first).
         api.MapGet("/projects/{id:int}/briefs", async (int id, AppDbContext db) =>
         {

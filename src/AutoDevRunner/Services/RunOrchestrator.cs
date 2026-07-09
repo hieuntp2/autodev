@@ -65,6 +65,7 @@ public class RunOrchestrator
     private string? _validationCommand;
     private int? _repairAttempts;
     private string? _sessionResult;
+    private bool _validationInferred;
     private bool _promptDirectivesUpdated;
 
     public RunOrchestrator(
@@ -677,7 +678,10 @@ public class RunOrchestrator
 
         var inferred = ValidationCommandInferrer.Infer(project.RepoPath);
         if (!string.IsNullOrWhiteSpace(inferred))
+        {
+            _validationInferred = true;
             log($"Inferred validation command for this run: {inferred}");
+        }
         return inferred;
     }
 
@@ -826,6 +830,18 @@ public class RunOrchestrator
         }
 
         _sessionResult = SessionResultFormatter.Build(run, _validationCommand);
+        run.PromptChars = _promptChars;
+        run.PromptEstTokens = _promptEstTokens;
+        run.InputTokens = _inputTokens;
+        run.OutputTokens = _outputTokens;
+        run.CostUsd = _costUsd;
+        run.Model = _model;
+        run.Tier = _tier?.ToString();
+        run.Resumed = _resumed;
+        run.RepairAttempts = _repairAttempts;
+        run.SessionResult = _sessionResult;
+        run.ValidationInferred = _validationInferred;
+        run.NotVerified = run.Status is RunStatus.Success && !run.ValidationRun;
 
         // Learned = memory updated this run.
         if (_memoryUpdates.Count > 0 && _stage < LifecycleStage.Learned)
@@ -981,6 +997,7 @@ public class RunOrchestrator
             Artifacts = _trackedArtifacts,
             ValidationRun = run.ValidationRun,
             ValidationPassed = run.ValidationPassed,
+            ValidationInferred = _validationInferred,
             NotVerified = run.Status is RunStatus.Success && !run.ValidationRun,
             RepairAttempts = _repairAttempts,
             SessionResult = _sessionResult,

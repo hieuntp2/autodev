@@ -10,3 +10,4 @@
 2026-07-09T08:24:48Z | step 10 | TOKEN phase 6 | tests: 115 green | Added planner skip policy for successful in-progress tasks.
 2026-07-09T14:22:46Z | step 11 | DB phase 0 | tests: 123 green | Not-verifiable runs with clean changes now finish Success, can commit, keep NOT VERIFIABLE reporting, and stay out of failure lessons.
 2026-07-09T14:22:46Z | step 12 | DB phase 1 | tests: 123 green | Added EF migration foundation, InitialCreate baseline, legacy EnsureCreated adoption path, and database migration docs.
+2026-07-09T14:47:56Z | DB phase 2 | tests: 125 green | Added queryable run metrics, sidecar mirroring, and per-project metrics aggregation endpoint.

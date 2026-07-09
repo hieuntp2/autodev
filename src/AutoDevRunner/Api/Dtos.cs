@@ -69,7 +69,13 @@ public record RunSummaryDto(
     string? Reason,
     string? Usage,
     bool EmailSent,
-    string? CommitSha);
+    string? CommitSha,
+    int? InputTokens,
+    int? OutputTokens,
+    decimal? CostUsd,
+    string? Tier,
+    bool? Resumed,
+    bool? NotVerified);
 
 public record ProviderStatusDto(
     string Provider,
@@ -120,5 +126,6 @@ public static class DtoMappers
 {
     public static RunSummaryDto ToDto(this RunRecord r, string projectName) => new(
         r.Id, r.ProjectId, projectName, r.Provider.ToString(), r.Status.ToString(),
-        r.StartedAt, r.FinishedAt, r.Branch, r.Reason, r.Usage, r.EmailSent, r.CommitSha);
+        r.StartedAt, r.FinishedAt, r.Branch, r.Reason, r.Usage, r.EmailSent, r.CommitSha,
+        r.InputTokens, r.OutputTokens, r.CostUsd, r.Tier, r.Resumed, r.NotVerified);
 }
