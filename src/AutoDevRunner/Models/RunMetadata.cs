@@ -46,6 +46,9 @@ public class RunMetadata
 
     public string? Task { get; set; }
 
+    /// <summary>Why the run failed/paused (if any). Read by the learning loop.</summary>
+    public string? Reason { get; set; }
+
     /// <summary>Furthest <see cref="LifecycleStage"/> reached, as a string.</summary>
     public string Stage { get; set; } = LifecycleStage.Planned.ToString();
 

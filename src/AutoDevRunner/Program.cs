@@ -67,6 +67,8 @@ builder.Services.AddSingleton<ArtifactTracker>();
 builder.Services.AddSingleton<ProjectMemoryWriter>();
 builder.Services.AddSingleton<RunMetadataStore>();
 builder.Services.AddSingleton<TaskProposer>();
+builder.Services.AddSingleton<RunHistoryService>();
+builder.Services.AddSingleton<RetrospectiveWriter>();
 
 // ---- Providers ----
 builder.Services.AddSingleton<IAiProvider, CodexCliProvider>();

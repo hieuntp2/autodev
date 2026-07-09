@@ -13,6 +13,7 @@ public class AutoDevOptions
     public SkillsOptions Skills { get; set; } = new();
     public ProjectMemoryOptions ProjectMemory { get; set; } = new();
     public RiskOptions Risk { get; set; } = new();
+    public LearningOptions Learning { get; set; } = new();
 
     /// <summary>
     /// Whether a trigger should keep looping until provider quota is exhausted.
@@ -30,6 +31,28 @@ public class AutoDevOptions
 public class BurnTokensOptions
 {
     public bool? Enabled { get; set; }
+}
+
+/// <summary>
+/// Learning loop: after each run AutoDev writes a per-run retrospective next to
+/// the run log, and future runs read the most recent runs to (a) inject lessons
+/// into the executor prompt and (b) avoid re-picking a task that has repeatedly
+/// failed. All of it is file-based (run sidecars); no DB schema change.
+/// </summary>
+public class LearningOptions
+{
+    /// <summary>Master switch for retrospectives + history-driven task selection.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>How many of the most recent runs to consider when learning.</summary>
+    public int RecentRunsWindow { get; set; } = 5;
+
+    /// <summary>
+    /// A task title that has failed at least this many times within the recent
+    /// window is treated as "repeatedly failing": the proposer avoids re-picking
+    /// it and the prompt warns the agent not to retry it the same way.
+    /// </summary>
+    public int RepeatedFailureThreshold { get; set; } = 2;
 }
 
 /// <summary>Controls whether AutoDev writes back to a project's memory files.</summary>

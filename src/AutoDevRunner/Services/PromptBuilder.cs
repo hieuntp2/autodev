@@ -16,7 +16,7 @@ public class PromptBuilder
     public string Build(Project project, string brief, RunRecord run,
         string? creativePlan = null, IReadOnlyList<SkillMatch>? skills = null,
         ProjectGoal? goal = null, TaskProposal? proposal = null, RiskLevel? risk = null,
-        Config.RiskOptions? riskPolicy = null)
+        Config.RiskOptions? riskPolicy = null, RunLessons? lessons = null)
     {
         var sb = new StringBuilder();
 
@@ -97,6 +97,9 @@ public class PromptBuilder
 
         // Relevant project memory (recent ideas + past decisions), compacted.
         AppendMemory(sb, goal);
+
+        // Lessons from the most recent runs (outcomes + what to avoid).
+        AppendLessons(sb, lessons);
 
         var taskTitle = !string.IsNullOrWhiteSpace(project.CurrentTask) ? project.CurrentTask!.Trim()
                         : proposal?.Title;
@@ -231,6 +234,44 @@ public class PromptBuilder
         Section("Roadmap", goal.Roadmap, 900);
         Section("Backlog", goal.Backlog, 900);
     }
+
+    /// <summary>
+    /// Inject what AutoDev learned from the most recent runs: their outcomes, the
+    /// tasks that keep failing (so the agent does not repeat a broken approach),
+    /// and follow-up tasks prior runs suggested. Keeps the run honest about its
+    /// own history without another external call.
+    /// </summary>
+    private static void AppendLessons(StringBuilder sb, RunLessons? lessons)
+    {
+        if (lessons is not { HasAny: true }) return;
+
+        sb.AppendLine("## Recent run history (lessons)");
+        sb.AppendLine("Outcomes of the most recent runs on this project — learn from them:");
+        foreach (var r in lessons.Recent.Take(5))
+        {
+            var line = $"- run #{r.RunId}: {(string.IsNullOrWhiteSpace(r.Task) ? "(no task)" : r.Task!.Trim())} → {r.Status}";
+            if (r.Failed && !string.IsNullOrWhiteSpace(r.Reason)) line += $" ({Truncate(r.Reason!.Trim(), 160)})";
+            sb.AppendLine(line);
+        }
+        sb.AppendLine();
+
+        if (lessons.RepeatedlyFailingTasks.Count > 0)
+        {
+            sb.AppendLine("### Do NOT retry these the same way (they have failed repeatedly)");
+            foreach (var t in lessons.RepeatedlyFailingTasks)
+                sb.AppendLine($"- {t} — change approach, split it smaller, or pick something else.");
+            sb.AppendLine();
+        }
+
+        if (lessons.SuggestedNextTasks.Count > 0)
+        {
+            sb.AppendLine("### Follow-ups suggested by earlier runs");
+            foreach (var t in lessons.SuggestedNextTasks) sb.AppendLine($"- {t}");
+            sb.AppendLine();
+        }
+    }
+
+    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 
     /// <summary>Relevant project memory: recent ideas + past decisions, compacted.</summary>
     private static void AppendMemory(StringBuilder sb, ProjectGoal? goal)

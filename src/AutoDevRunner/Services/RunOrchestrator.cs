@@ -37,6 +37,8 @@ public class RunOrchestrator
     private readonly ProjectMemoryWriter _memory;
     private readonly RunMetadataStore _runMeta;
     private readonly TaskProposer _proposer;
+    private readonly RunHistoryService _history;
+    private readonly RetrospectiveWriter _retro;
     private readonly AutoDevOptions _opt;
     private readonly ILogger<RunOrchestrator> _log;
 
@@ -48,6 +50,7 @@ public class RunOrchestrator
     private List<string> _memoryUpdates = new();
     private List<string> _nextSuggestedTasks = new();
     private string? _taskSource;
+    private RunLessons _lessons = RunLessons.Empty;
 
     public RunOrchestrator(
         AppDbContext db, GitService git, GuardrailService guard,
@@ -58,6 +61,7 @@ public class RunOrchestrator
         SkillRegistry skills, SkillExporter skillExporter,
         ProjectGoalService goals, RiskAssessor risk, ArtifactTracker artifacts,
         ProjectMemoryWriter memory, RunMetadataStore runMeta, TaskProposer proposer,
+        RunHistoryService history, RetrospectiveWriter retro,
         IOptions<AutoDevOptions> opt, ILogger<RunOrchestrator> log)
     {
         _db = db; _git = git; _guard = guard; _promptBuilder = promptBuilder;
@@ -65,7 +69,7 @@ public class RunOrchestrator
         _providers = providers; _availability = availability;
         _proc = proc; _lock = runLock; _skills = skills; _skillExporter = skillExporter;
         _goals = goals; _risk = risk; _artifacts = artifacts; _memory = memory; _runMeta = runMeta;
-        _proposer = proposer; _opt = opt.Value; _log = log;
+        _proposer = proposer; _history = history; _retro = retro; _opt = opt.Value; _log = log;
     }
 
     public Task<RunRecord?> RunProjectAsync(int projectId, CancellationToken ct = default) =>
@@ -154,6 +158,19 @@ public class RunOrchestrator
             var goal = await _goals.LoadAsync(project.RepoPath, ct);
             if (goal.HasGoal) Log("Loaded project goal from .ai-runner/PROJECT_GOAL.md.");
 
+            // 3a. Learning loop: read the most recent runs to feed task selection
+            //     and the prompt. File-based (run sidecars), no external cost.
+            if (_opt.Learning.Enabled)
+            {
+                _lessons = _history.Analyze(project.RepoPath,
+                    _opt.Learning.RecentRunsWindow, _opt.Learning.RepeatedFailureThreshold);
+                if (_lessons.HasAny)
+                    Log($"Learning: read {_lessons.Recent.Count} recent run(s)"
+                        + (_lessons.RepeatedlyFailingTasks.Count > 0
+                            ? $"; avoiding {_lessons.RepeatedlyFailingTasks.Count} repeatedly-failing task(s)."
+                            : "."));
+            }
+
             // 3b. Optional OpenAI creative planner (goal + KB grounded). Fail-soft.
             //     When no task is in progress, it proposes the next small task.
             var creativePlan = await _planner.CreatePlanAsync(project, brief, goal, ct);
@@ -168,7 +185,7 @@ public class RunOrchestrator
             TaskProposal? proposal = null;
             if (string.IsNullOrWhiteSpace(project.CurrentTask))
             {
-                proposal = _proposer.Propose(project, goal);
+                proposal = _proposer.Propose(project, goal, _lessons);
                 _taskSource = string.IsNullOrWhiteSpace(creativePlan) ? proposal.Source : "planner";
                 Log($"No current task — proposed ({_taskSource}): {proposal.Title} [risk {proposal.Risk}]");
             }
@@ -201,7 +218,7 @@ public class RunOrchestrator
             // 4. Build prompt. Task is now planned.
             _stage = LifecycleStage.Planned;
             var prompt = _promptBuilder.Build(project, brief, run, creativePlan, _selectedSkills,
-                goal, proposal, _riskAssessment.Level, _opt.Risk);
+                goal, proposal, _riskAssessment.Level, _opt.Risk, _lessons);
 
             // Persist the exact prompt, plan and task on the run so prompt/plan
             // evolution is queryable in the DB (not just in the .ai-runner files).
@@ -573,6 +590,17 @@ public class RunOrchestrator
         if (status is RunStatus.Failed) _stage = LifecycleStage.Failed;
         await WriteRunMetadataAsync(project, run, ct);
 
+        // Learning loop: per-run retrospective (what worked/failed, what to try/avoid).
+        if (_opt.Learning.Enabled && !string.IsNullOrWhiteSpace(run.LogPath))
+        {
+            var changed = string.IsNullOrWhiteSpace(run.ChangedFiles)
+                ? Array.Empty<string>()
+                : run.ChangedFiles!.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var retroPath = await _retro.WriteAsync(run.LogPath!, run, summary, _riskAssessment, changed, _lessons, ct);
+            if (retroPath is not null)
+                logBuffer.AppendLine("Wrote retrospective: " + Path.GetFileName(retroPath));
+        }
+
         // Persist the final lifecycle stage + risk on the run (queryable history).
         run.Stage = _stage.ToString();
         run.Risk = _riskAssessment.Level.ToString();
@@ -677,7 +705,8 @@ public class RunOrchestrator
             FinishedAt = run.FinishedAt,
             Branch = run.Branch,
             CommitSha = run.CommitSha,
-            Task = project.CurrentTask,
+            Task = run.TaskTitle ?? project.CurrentTask,
+            Reason = run.Reason,
             Stage = _stage.ToString(),
             Risk = _riskAssessment.Level.ToString(),
             RiskReasons = _riskAssessment.Reasons,
