@@ -12,6 +12,9 @@ public class AppDbContext : DbContext
     public DbSet<ProviderState> ProviderStates => Set<ProviderState>();
     public DbSet<ProjectBrief> ProjectBriefs => Set<ProjectBrief>();
     public DbSet<PromptDirective> PromptDirectives => Set<PromptDirective>();
+    public DbSet<ProjectLearningState> ProjectLearningStates => Set<ProjectLearningState>();
+    public DbSet<ProjectTaskStat> ProjectTaskStats => Set<ProjectTaskStat>();
+    public DbSet<ProjectSettingChange> ProjectSettingChanges => Set<ProjectSettingChange>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -39,6 +42,27 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
         b.Entity<PromptDirective>().HasIndex(pr => new { pr.ProjectId, pr.Version }).IsUnique();
         b.Entity<PromptDirective>().Property(pr => pr.Author).HasConversion<string>();
+
+        b.Entity<ProjectLearningState>()
+            .HasKey(s => s.ProjectId);
+        b.Entity<ProjectLearningState>()
+            .HasOne(s => s.Project)
+            .WithOne(p => p.LearningState)
+            .HasForeignKey<ProjectLearningState>(s => s.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        b.Entity<ProjectTaskStat>()
+            .HasOne(s => s.Project)
+            .WithMany(p => p.TaskStats)
+            .HasForeignKey(s => s.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ProjectTaskStat>().HasIndex(s => new { s.ProjectId, s.TaskKeyNormalized }).IsUnique();
+
+        b.Entity<ProjectSettingChange>()
+            .HasOne(c => c.Project)
+            .WithMany(p => p.SettingChanges)
+            .HasForeignKey(c => c.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Store enums as strings for readable DB rows.
         b.Entity<Project>().Property(p => p.LastRunStatus).HasConversion<string>();

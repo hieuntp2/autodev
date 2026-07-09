@@ -184,8 +184,8 @@ public class RunOrchestrator
             //     and the prompt. File-based (run sidecars), no external cost.
             if (_opt.Learning.Enabled)
             {
-                _lessons = _history.Analyze(project.RepoPath,
-                    _opt.Learning.RecentRunsWindow, _opt.Learning.RepeatedFailureThreshold);
+                _lessons = await _history.AnalyzeAsync(_db, project.Id, project.RepoPath,
+                    _opt.Learning.RecentRunsWindow, _opt.Learning.RepeatedFailureThreshold, ct);
                 if (_lessons.HasAny)
                     Log($"Learning: read {_lessons.Recent.Count} recent run(s)"
                         + (_lessons.RepeatedlyFailingTasks.Count > 0
@@ -405,6 +405,7 @@ public class RunOrchestrator
             project.LastSummary = summary.FullText;
             project.CurrentTask = summary.NextTask ?? summary.Pending ?? summary.Task;
             _nextSuggestedTasks = SplitTasks(summary.NextSuggestedTasks ?? summary.NextTask);
+            await MaybeApplySettingsProposalAsync(project, summary, Log, ct);
 
             // 7b. Project memory: fold ideas/decisions/next-tasks into .ai-runner/ —
             //     GATED by AutoDev:ProjectMemory:AutoWriteEnabled. Done BEFORE capturing
@@ -707,6 +708,42 @@ public class RunOrchestrator
         log($"AI evolved prompt directives -> version {version.Version} (stored in DB; file mirror updated).");
     }
 
+    private async Task MaybeApplySettingsProposalAsync(Project project, ParsedSummary summary, Action<string> log, CancellationToken ct)
+    {
+        var filePath = Path.Combine(project.RepoPath, ".ai-runner", "settings-proposal.json");
+        string? fileProposal = null;
+        if (File.Exists(filePath))
+        {
+            try { fileProposal = await File.ReadAllTextAsync(filePath, ct); }
+            catch (Exception ex) { _log.LogWarning(ex, "Could not read AI settings proposal."); }
+            try { File.Delete(filePath); } catch { /* best effort - keep going */ }
+        }
+
+        var hasSummaryProposal = !string.IsNullOrWhiteSpace(summary.SettingsProposal)
+            && !summary.SettingsProposal.Trim().Equals("none", StringComparison.OrdinalIgnoreCase);
+        var hasFileProposal = !string.IsNullOrWhiteSpace(fileProposal);
+        if (!hasSummaryProposal && !hasFileProposal) return;
+
+        if (!project.AllowAiEditSettings)
+        {
+            log("AI settings proposal ignored: Project.AllowAiEditSettings is false.");
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        var changes = new List<ProjectSettingChange>();
+        changes.AddRange(ProjectSettingsTuner.Apply(project, summary.SettingsProposal, "Ai", now));
+        changes.AddRange(ProjectSettingsTuner.Apply(project, fileProposal, "Ai", now));
+        if (changes.Count == 0)
+        {
+            log("AI settings proposal contained no whitelisted setting changes.");
+            return;
+        }
+
+        _db.ProjectSettingChanges.AddRange(changes);
+        log("Applied AI settings proposal: " + string.Join(", ", changes.Select(c => c.Key)));
+    }
+
     private string? ResolveValidationCommand(Project project, TaskProposal? proposal, Action<string> log)
     {
         var configured = proposal?.ValidationCommand ?? project.ValidationCommand;
@@ -908,6 +945,7 @@ public class RunOrchestrator
         // Persist the final lifecycle stage + risk on the run (queryable history).
         run.Stage = _stage.ToString();
         run.Risk = _riskAssessment.Level.ToString();
+        await UpdateLearningStateAsync(project, run, ct);
 
         // Update denormalized project snapshot.
         project.LastRunStatus = status;
@@ -924,6 +962,38 @@ public class RunOrchestrator
         await _db.SaveChangesAsync(ct);
 
         _log.LogInformation("Project {Name} run #{Run} finished: {Status}", project.Name, run.Id, status);
+    }
+
+    private async Task UpdateLearningStateAsync(Project project, RunRecord run, CancellationToken ct)
+    {
+        var state = await _db.ProjectLearningStates.FirstOrDefaultAsync(s => s.ProjectId == project.Id, ct);
+        if (state is null)
+        {
+            state = new ProjectLearningState { ProjectId = project.Id };
+            _db.ProjectLearningStates.Add(state);
+        }
+
+        var taskStats = await _db.ProjectTaskStats
+            .Where(s => s.ProjectId == project.Id)
+            .ToListAsync(ct);
+
+        var takePrevious = Math.Max(0, _opt.Learning.RecentRunsWindow - 1);
+        var rollingStatuses = new List<RunStatus> { run.Status };
+        if (takePrevious > 0)
+        {
+            var previous = await _db.Runs.AsNoTracking()
+                .Where(r => r.ProjectId == project.Id && r.Id != run.Id && r.FinishedAt != null)
+                .OrderByDescending(r => r.FinishedAt)
+                .ThenByDescending(r => r.Id)
+                .Take(takePrevious)
+                .Select(r => r.Status)
+                .ToListAsync(ct);
+            rollingStatuses.AddRange(previous);
+        }
+
+        ProjectLearningUpdater.Apply(state, taskStats, run, rollingStatuses, DateTime.UtcNow);
+        foreach (var stat in taskStats.Where(s => _db.Entry(s).State is EntityState.Detached))
+            _db.ProjectTaskStats.Add(stat);
     }
 
     private async Task<string> WriteRunFilesAsync(Project project, RunRecord run,

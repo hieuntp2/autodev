@@ -162,6 +162,7 @@ public static class ApiEndpoints
                 AutoPush = dto.AutoPush ?? false,
                 AllowRunOnMainBranch = dto.AllowRunOnMainBranch ?? false,
                 AllowAiEditBrief = dto.AllowAiEditBrief ?? false,
+                AllowAiEditSettings = dto.AllowAiEditSettings ?? false,
                 Notes = dto.Notes
             };
             db.Projects.Add(p);
@@ -194,6 +195,7 @@ public static class ApiEndpoints
             if (dto.AutoPush is not null) p.AutoPush = dto.AutoPush.Value;
             if (dto.AllowRunOnMainBranch is not null) p.AllowRunOnMainBranch = dto.AllowRunOnMainBranch.Value;
             if (dto.AllowAiEditBrief is not null) p.AllowAiEditBrief = dto.AllowAiEditBrief.Value;
+            if (dto.AllowAiEditSettings is not null) p.AllowAiEditSettings = dto.AllowAiEditSettings.Value;
             if (dto.Notes is not null) p.Notes = dto.Notes;
 
             // Editing the brief appends a new version (history is never overwritten).
@@ -473,7 +475,7 @@ public static class ApiEndpoints
         {
             p.Id, p.Name, p.RepoPath, p.BriefPath, p.ProjectType, p.Enabled, p.Paused, p.Priority,
             p.ProviderPriority, p.ValidationCommand, p.MaxRunMinutes,
-            p.AutoCommit, p.AutoPush, p.AllowRunOnMainBranch, p.AllowAiEditBrief, p.AiBranchPrefix,
+            p.AutoCommit, p.AutoPush, p.AllowRunOnMainBranch, p.AllowAiEditBrief, p.AllowAiEditSettings, p.AiBranchPrefix,
             p.Notes, p.CurrentTask, p.LastSummary, p.CurrentBranch, p.ProviderSessionId,
             LastRunStatus = p.LastRunStatus?.ToString(),
             LastProvider = p.LastProvider?.ToString(),

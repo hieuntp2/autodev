@@ -33,6 +33,12 @@ public class Project
     public bool AllowAiEditBrief { get; set; } = false;
 
     /// <summary>
+    /// Allow the AI to apply learned project setting tweaks. Only a small
+    /// whitelist is honored; safety flags remain human-only.
+    /// </summary>
+    public bool AllowAiEditSettings { get; set; } = false;
+
+    /// <summary>
     /// Target platform / stack this project MUST build for, e.g. "Android (Kotlin/Jetpack Compose)",
     /// ".NET", "Node/TypeScript web". Injected into the prompt as a non-negotiable constraint so the
     /// agent cannot silently reimplement the product on a different stack (e.g. an HTML prototype for
@@ -85,4 +91,7 @@ public class Project
     public List<RunRecord> Runs { get; set; } = new();
     public List<ProjectBrief> Briefs { get; set; } = new();
     public List<PromptDirective> PromptDirectives { get; set; } = new();
+    public ProjectLearningState? LearningState { get; set; }
+    public List<ProjectTaskStat> TaskStats { get; set; } = new();
+    public List<ProjectSettingChange> SettingChanges { get; set; } = new();
 }

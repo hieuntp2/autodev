@@ -114,4 +114,21 @@ public class PromptBuilderTests
         Assert.DoesNotContain("prompt-proposal.md", off);
         Assert.Contains("prompt-proposal.md", on);
     }
+
+    [Fact]
+    public void Settings_self_tuning_contract_only_appears_when_allowed()
+    {
+        var off = _builder.Build(Project(task: "t"), brief: "b", run: new RunRecord(),
+            creativePlan: null, skills: null, goal: null);
+
+        var p = Project(task: "t");
+        p.AllowAiEditSettings = true;
+        var on = _builder.Build(p, brief: "b", run: new RunRecord(),
+            creativePlan: null, skills: null, goal: null);
+
+        Assert.DoesNotContain("SETTINGS_PROPOSAL:", off);
+        Assert.Contains("SETTINGS_PROPOSAL:", on);
+        Assert.Contains("ValidationCommand", on);
+        Assert.Contains("MaxRunMinutes", on);
+    }
 }

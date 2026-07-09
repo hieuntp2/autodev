@@ -1,3 +1,6 @@
+using AutoDevRunner.Data;
+using Microsoft.EntityFrameworkCore;
+
 namespace AutoDevRunner.Services;
 
 /// <summary>One prior run distilled to the facts the learning loop needs.</summary>
@@ -89,6 +92,32 @@ public class RunHistoryService
         }
 
         return new RunLessons(recent, repeatedlyFailing, suggested);
+    }
+
+    public async Task<RunLessons> AnalyzeAsync(
+        AppDbContext db,
+        int projectId,
+        string repoPath,
+        int window,
+        int failureThreshold,
+        CancellationToken ct = default)
+    {
+        var fileLessons = Analyze(repoPath, window, failureThreshold);
+        failureThreshold = Math.Max(1, failureThreshold);
+
+        var taskStats = await db.ProjectTaskStats.AsNoTracking()
+            .Where(s => s.ProjectId == projectId)
+            .ToListAsync(ct);
+        if (taskStats.Count == 0)
+            return fileLessons;
+
+        var repeatedlyFailing = taskStats
+            .Where(s => s.Failures >= failureThreshold)
+            .OrderByDescending(s => s.LastAttemptAt)
+            .Select(s => string.IsNullOrWhiteSpace(s.TaskTitle) ? s.TaskKeyNormalized : s.TaskTitle.Trim())
+            .ToList();
+
+        return fileLessons with { RepeatedlyFailingTasks = repeatedlyFailing };
     }
 
     private static bool IsFailure(string status) =>

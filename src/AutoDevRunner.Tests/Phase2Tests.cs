@@ -26,6 +26,7 @@ public class SummaryParserV2Tests
             "RISK_LEVEL: safe\n" +
             "NEXT_SUGGESTED_TASKS: add hop; add sleep\n" +
             "MEMORY_UPDATES: decided to keep 64x32 canvas\n" +
+            "SETTINGS_PROPOSAL: {\"ValidationCommand\":\"dotnet test\"}\n" +
             "NEXT_TASK: build the runtime player\n";
         var s = _parser.Parse(output);
 
@@ -37,6 +38,7 @@ public class SummaryParserV2Tests
         Assert.Equal("safe", s.RiskLevel);
         Assert.Contains("hop", s.NextSuggestedTasks);
         Assert.Contains("64x32", s.MemoryUpdates);
+        Assert.Contains("ValidationCommand", s.SettingsProposal);
         Assert.Equal("build the runtime player", s.NextTask);
     }
 

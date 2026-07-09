@@ -84,6 +84,16 @@ public class PromptBuilder
             sb.AppendLine();
         }
 
+        if (project.AllowAiEditSettings)
+        {
+            sb.AppendLine("## Self-tuning project settings (optional)");
+            sb.AppendLine("If you learn a durable setting improvement for this project, propose only these keys:");
+            sb.AppendLine("ValidationCommand, ProviderPriority, MaxRunMinutes. Never propose safety flags.");
+            sb.AppendLine("Report the proposal in SETTINGS_PROPOSAL as a small JSON object, or write");
+            sb.AppendLine("`.ai-runner/settings-proposal.json`. Use none if no change is warranted.");
+            sb.AppendLine();
+        }
+
         // Creative plan from the OpenAI knowledge-base planner (when configured).
         if (!string.IsNullOrWhiteSpace(creativePlan))
         {
@@ -175,7 +185,7 @@ public class PromptBuilder
             project.RepoPath, riskPolicy?.BlockFileDeletions ?? true, riskPolicy?.BlockOutOfProjectChanges ?? true));
         sb.AppendLine();
 
-        AppendRequiredOutput(sb, skills);
+        AppendRequiredOutput(sb, skills, project.AllowAiEditSettings);
         return ApplyBudget(sb.ToString(), promptOptions);
     }
 
@@ -209,7 +219,7 @@ public class PromptBuilder
         sb.AppendLine(GuardrailService.PromptGuardrails(project.AllowRunOnMainBranch, project.AutoPush,
             project.RepoPath, riskPolicy?.BlockFileDeletions ?? true, riskPolicy?.BlockOutOfProjectChanges ?? true));
         sb.AppendLine();
-        AppendRequiredOutput(sb, skills: null);
+        AppendRequiredOutput(sb, skills: null, allowSettingsProposal: project.AllowAiEditSettings);
         return sb.ToString();
     }
 
@@ -244,7 +254,7 @@ public class PromptBuilder
         sb.AppendLine(GuardrailService.PromptGuardrails(project.AllowRunOnMainBranch, project.AutoPush,
             project.RepoPath, riskPolicy?.BlockFileDeletions ?? true, riskPolicy?.BlockOutOfProjectChanges ?? true));
         sb.AppendLine();
-        AppendRequiredOutput(sb, skills: null);
+        AppendRequiredOutput(sb, skills: null, allowSettingsProposal: project.AllowAiEditSettings);
 
         var prompt = sb.ToString();
         return prompt.Length <= 4000 ? prompt : ApplyBudget(prompt, new PromptOptions { MaxChars = 4000 });
@@ -256,7 +266,7 @@ public class PromptBuilder
     /// the v2 goal-driven fields the runner uses for lifecycle, artifacts, risk
     /// and memory.
     /// </summary>
-    private static void AppendRequiredOutput(StringBuilder sb, IReadOnlyList<SkillMatch>? skills)
+    private static void AppendRequiredOutput(StringBuilder sb, IReadOnlyList<SkillMatch>? skills, bool allowSettingsProposal)
     {
         sb.AppendLine("## Required output");
         sb.AppendLine($"At the very end of your response, print a summary block starting with the exact line `{SummaryMarker}` and using this format (fill every field; use \"none\" when not applicable):");
@@ -273,6 +283,8 @@ public class PromptBuilder
         sb.AppendLine("RISK_LEVEL: <safe | normal | risky>");
         sb.AppendLine("NEXT_SUGGESTED_TASKS: <1-3 small next tasks toward the goal>");
         sb.AppendLine("MEMORY_UPDATES: <important decisions/learnings to remember, or none>");
+        if (allowSettingsProposal)
+            sb.AppendLine("SETTINGS_PROPOSAL: <JSON object using only ValidationCommand, ProviderPriority, MaxRunMinutes, or none>");
         sb.AppendLine("NEXT_TASK: <the single task to resume next run>");
         if (skills is { Count: > 0 })
             sb.AppendLine("(For a pixel-animation-artist run, ARTIFACT_PATHS should include the frames/, sprite sheet, GIF and .animation.json.)");

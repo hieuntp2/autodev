@@ -17,6 +17,7 @@ public record CreateProjectDto(
     bool? AutoPush,
     bool? AllowRunOnMainBranch,
     bool? AllowAiEditBrief,
+    bool? AllowAiEditSettings,
     string? Notes);
 
 /// <summary>Partial update. Null fields are left unchanged.</summary>
@@ -36,6 +37,7 @@ public record UpdateProjectDto(
     bool? AutoPush,
     bool? AllowRunOnMainBranch,
     bool? AllowAiEditBrief,
+    bool? AllowAiEditSettings,
     string? Notes);
 
 /// <summary>One brief version for the history view.</summary>

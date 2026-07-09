@@ -25,7 +25,8 @@ public record ParsedSummary(
     string? ValidationResult = null,
     string? RiskLevel = null,
     string? NextSuggestedTasks = null,
-    string? MemoryUpdates = null)
+    string? MemoryUpdates = null,
+    string? SettingsProposal = null)
 {
     /// <summary>Best available human title for the task worked on.</summary>
     public string? EffectiveTitle => TaskTitle ?? Task;
@@ -69,7 +70,8 @@ public class SummaryParser
             ValidationResult: Field("VALIDATION_RESULT") ?? Field("VALIDATION"),
             RiskLevel: Field("RISK_LEVEL"),
             NextSuggestedTasks: Field("NEXT_SUGGESTED_TASKS") ?? Field("NEXT_ANIMATIONS"),
-            MemoryUpdates: Field("MEMORY_UPDATES"));
+            MemoryUpdates: Field("MEMORY_UPDATES"),
+            SettingsProposal: Field("SETTINGS_PROPOSAL"));
     }
 
     private static string Truncate(string s, int max) =>
