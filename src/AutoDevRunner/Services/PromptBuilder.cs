@@ -17,7 +17,8 @@ public class PromptBuilder
         string? creativePlan = null, IReadOnlyList<SkillMatch>? skills = null,
         ProjectGoal? goal = null, TaskProposal? proposal = null, RiskLevel? risk = null,
         Config.RiskOptions? riskPolicy = null, RunLessons? lessons = null,
-        string? validationCommandOverride = null)
+        string? validationCommandOverride = null,
+        string? projectPromptDirectives = null)
     {
         var sb = new StringBuilder();
 
@@ -66,6 +67,19 @@ public class PromptBuilder
 
         // Project Goal Layer (.ai-runner/PROJECT_GOAL.md + optional roadmap/backlog/…).
         AppendGoal(sb, goal);
+        AppendProjectPromptDirectives(sb, projectPromptDirectives);
+
+        if (project.AllowAiEditBrief)
+        {
+            sb.AppendLine("## Evolving prompt directives (optional)");
+            sb.AppendLine("You may improve your standing project-specific directives when you learn a durable");
+            sb.AppendLine("style rule, review checklist, priority, or workflow that should guide future runs.");
+            sb.AppendLine("To propose a change, write the FULL revised directives Markdown to");
+            sb.AppendLine("`.ai-runner/prompt-proposal.md`. The runner validates it, archives the previous");
+            sb.AppendLine("PROMPT.md, and uses the new directives on future runs. If no change is warranted,");
+            sb.AppendLine("do not create that file.");
+            sb.AppendLine();
+        }
 
         // Creative plan from the OpenAI knowledge-base planner (when configured).
         if (!string.IsNullOrWhiteSpace(creativePlan))
@@ -304,6 +318,15 @@ public class PromptBuilder
             foreach (var t in lessons.SuggestedNextTasks) sb.AppendLine($"- {t}");
             sb.AppendLine();
         }
+    }
+
+    private static void AppendProjectPromptDirectives(StringBuilder sb, string? directives)
+    {
+        if (string.IsNullOrWhiteSpace(directives)) return;
+
+        sb.AppendLine("## Project prompt directives (self-evolved)");
+        sb.AppendLine(Compact(directives, 1200));
+        sb.AppendLine();
     }
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";

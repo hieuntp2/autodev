@@ -70,6 +70,7 @@ public class RunMetadata
     public bool ValidationPassed { get; set; }
     public int? RepairAttempts { get; set; }
     public string? SessionResult { get; set; }
+    public bool PromptDirectivesUpdated { get; set; }
 
     /// <summary>Project-memory files updated this run (e.g. IDEAS.md, DECISIONS.md).</summary>
     public List<string> MemoryUpdates { get; set; } = new();

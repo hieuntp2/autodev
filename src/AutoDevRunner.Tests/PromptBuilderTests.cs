@@ -84,4 +84,34 @@ public class PromptBuilderTests
             creativePlan: null, skills: null, goal: null);
         Assert.Contains("brief-proposal.md", on);
     }
+
+    [Fact]
+    public void Prompt_directives_section_appears_only_when_content_is_provided()
+    {
+        var without = _builder.Build(Project(task: "t"), brief: "b", run: new RunRecord(),
+            creativePlan: null, skills: null, goal: null);
+
+        var with = _builder.Build(Project(task: "t"), brief: "b", run: new RunRecord(),
+            creativePlan: null, skills: null, goal: null,
+            projectPromptDirectives: "Prefer small commits and explicit validation.");
+
+        Assert.DoesNotContain("## Project prompt directives (self-evolved)", without);
+        Assert.Contains("## Project prompt directives (self-evolved)", with);
+        Assert.Contains("Prefer small commits", with);
+    }
+
+    [Fact]
+    public void Prompt_directive_evolution_instruction_only_appears_when_allowed()
+    {
+        var off = _builder.Build(Project(task: "t"), brief: "b", run: new RunRecord(),
+            creativePlan: null, skills: null, goal: null);
+
+        var p = Project(task: "t");
+        p.AllowAiEditBrief = true;
+        var on = _builder.Build(p, brief: "b", run: new RunRecord(),
+            creativePlan: null, skills: null, goal: null);
+
+        Assert.DoesNotContain("prompt-proposal.md", off);
+        Assert.Contains("prompt-proposal.md", on);
+    }
 }

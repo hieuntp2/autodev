@@ -35,6 +35,7 @@ public class RunOrchestrator
     private readonly RiskAssessor _risk;
     private readonly ArtifactTracker _artifacts;
     private readonly ProjectMemoryWriter _memory;
+    private readonly PromptDirectivesService _promptDirectives;
     private readonly RunMetadataStore _runMeta;
     private readonly TaskProposer _proposer;
     private readonly RunHistoryService _history;
@@ -61,6 +62,7 @@ public class RunOrchestrator
     private string? _validationCommand;
     private int? _repairAttempts;
     private string? _sessionResult;
+    private bool _promptDirectivesUpdated;
 
     public RunOrchestrator(
         AppDbContext db, GitService git, GuardrailService guard,
@@ -70,7 +72,8 @@ public class RunOrchestrator
         ProcessRunner proc, RunLock runLock,
         SkillRegistry skills, SkillExporter skillExporter,
         ProjectGoalService goals, RiskAssessor risk, ArtifactTracker artifacts,
-        ProjectMemoryWriter memory, RunMetadataStore runMeta, TaskProposer proposer,
+        ProjectMemoryWriter memory, PromptDirectivesService promptDirectives,
+        RunMetadataStore runMeta, TaskProposer proposer,
         RunHistoryService history, RetrospectiveWriter retro, CodexUsageReader codexUsage,
         IOptions<AutoDevOptions> opt, ILogger<RunOrchestrator> log)
     {
@@ -78,7 +81,8 @@ public class RunOrchestrator
         _planner = planner; _summaryParser = summaryParser; _email = email;
         _providers = providers; _availability = availability;
         _proc = proc; _lock = runLock; _skills = skills; _skillExporter = skillExporter;
-        _goals = goals; _risk = risk; _artifacts = artifacts; _memory = memory; _runMeta = runMeta;
+        _goals = goals; _risk = risk; _artifacts = artifacts; _memory = memory;
+        _promptDirectives = promptDirectives; _runMeta = runMeta;
         _proposer = proposer; _history = history; _retro = retro; _opt = opt.Value; _log = log;
         _codexUsage = codexUsage;
     }
@@ -229,11 +233,13 @@ public class RunOrchestrator
             // 3f. Select global AutoDev skills (also match against the proposed title).
             _selectedSkills = SelectSkills(project, brief + "\n" + (proposal?.Title ?? ""), creativePlan, Log);
             _validationCommand = ResolveValidationCommand(project, proposal, Log);
+            var projectPromptDirectives = await _promptDirectives.LoadAsync(project.RepoPath, ct);
 
             // 4. Build prompt. Task is now planned.
             _stage = LifecycleStage.Planned;
             var prompt = _promptBuilder.Build(project, brief, run, creativePlan, _selectedSkills,
-                goal, proposal, _riskAssessment.Level, _opt.Risk, _lessons, _validationCommand);
+                goal, proposal, _riskAssessment.Level, _opt.Risk, _lessons, _validationCommand,
+                projectPromptDirectives);
             _promptChars = prompt.Length;
             _promptEstTokens = EstimateTokens(prompt.Length);
             Log($"Prompt prepared: {_promptChars} chars (~{_promptEstTokens} tokens).");
@@ -366,6 +372,11 @@ public class RunOrchestrator
             // 7c. Optional AI brief evolution (gated per project). Done BEFORE capturing
             //     changed files so the proposal file is imported to the DB, not committed.
             await MaybeEvolveBriefAsync(project, run, Log, ct);
+            if (project.AllowAiEditBrief)
+            {
+                var promptUpdate = await _promptDirectives.AdoptProposalAsync(project.RepoPath, DateTime.UtcNow, Log, ct);
+                _promptDirectivesUpdated = promptUpdate.Updated;
+            }
 
             // 8. Record changed files (+ status for risk) and track generated artifacts.
             //    Merge git-detected artifacts with the paths the AI declared.
@@ -915,6 +926,7 @@ public class RunOrchestrator
             ValidationPassed = run.ValidationPassed,
             RepairAttempts = _repairAttempts,
             SessionResult = _sessionResult,
+            PromptDirectivesUpdated = _promptDirectivesUpdated,
             MemoryUpdates = _memoryUpdates,
             NextSuggestedTasks = _nextSuggestedTasks,
             TaskSource = _taskSource

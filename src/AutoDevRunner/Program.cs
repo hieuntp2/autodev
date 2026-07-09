@@ -65,6 +65,7 @@ builder.Services.AddSingleton<ProjectGoalService>();
 builder.Services.AddSingleton<RiskAssessor>();
 builder.Services.AddSingleton<ArtifactTracker>();
 builder.Services.AddSingleton<ProjectMemoryWriter>();
+builder.Services.AddSingleton<PromptDirectivesService>();
 builder.Services.AddSingleton<RunMetadataStore>();
 builder.Services.AddSingleton<TaskProposer>();
 builder.Services.AddSingleton<RunHistoryService>();
