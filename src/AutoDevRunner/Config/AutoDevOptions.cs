@@ -203,6 +203,9 @@ public class ContinuousOptions
     /// <summary>How long to bench a provider after it reports a quota error
     /// (used when no exact reset time is known).</summary>
     public int QuotaCooldownMinutes { get; set; } = 60;
+
+    public int StopAfterNoProgressRuns { get; set; } = 2;
+    public bool LightTierForMaintenance { get; set; } = true;
 }
 
 /// <summary>

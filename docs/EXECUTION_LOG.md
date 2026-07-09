@@ -6,3 +6,4 @@
 2026-07-09T08:14:18Z | step 6 | TOKEN phase 2 | tests: 101 green | Added configurable prompt caps, priority shrinking, dedupe caps, and budget enforcement.
 2026-07-09T08:17:12Z | step 7 | TOKEN phase 3 | tests: 106 green | Added task tier classification, tiered provider argument routing, and tier sidecar reporting.
 2026-07-09T08:20:40Z | step 8 | TOKEN phase 4 | tests: 111 green | Added native resume decisions, delta prompts, resume templates, fallback, and sidecar resume tracking.
+2026-07-09T08:23:10Z | step 9 | TOKEN phase 5 | tests: 113 green | Added value-aware burn-mode early stop and maintenance tier toggle.

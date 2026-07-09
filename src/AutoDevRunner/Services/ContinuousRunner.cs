@@ -1,5 +1,7 @@
 using AutoDevRunner.Config;
+using AutoDevRunner.Data;
 using AutoDevRunner.Providers;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace AutoDevRunner.Services;
@@ -67,6 +69,7 @@ public class ContinuousRunner
             _log.LogInformation(
                 "Burn-token mode ({Label}): looping runs until providers reach {Max}% usage (cap {Cap} runs, {Delay}s between runs).",
                 label, _opt.MaxUsagePercent, _opt.MaxRunsPerSession, _opt.DelayBetweenRunsSeconds);
+            var recentOutcomes = new List<ContinuousRunOutcome>();
 
             for (var i = 1; i <= _opt.MaxRunsPerSession && !ct.IsCancellationRequested; i++)
             {
@@ -78,6 +81,18 @@ public class ContinuousRunner
 
                 _log.LogInformation("Burn-token iteration {I}/{Max}: {Report}", i, _opt.MaxRunsPerSession, report);
                 await body(ct);
+                var outcome = await ReadLatestOutcomeAsync(ct);
+                if (outcome is not null)
+                {
+                    recentOutcomes.Add(outcome);
+                    if (ContinuousProgressPolicy.ShouldStop(recentOutcomes, _opt.StopAfterNoProgressRuns))
+                    {
+                        _log.LogInformation(
+                            "Stopping burn-token loop after iteration {I}: no progress for {Count} consecutive run(s) (zero changed files or failed validation).",
+                            i, Math.Max(1, _opt.StopAfterNoProgressRuns));
+                        return;
+                    }
+                }
 
                 if (!AnyViableProvider(out report))
                 {
@@ -96,6 +111,21 @@ public class ContinuousRunner
         {
             outerLease?.Dispose();
         }
+    }
+
+    private async Task<ContinuousRunOutcome?> ReadLatestOutcomeAsync(CancellationToken ct)
+    {
+        using var scope = _scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var run = await db.Runs
+            .OrderByDescending(r => r.FinishedAt ?? r.StartedAt)
+            .FirstOrDefaultAsync(ct);
+        if (run is null) return null;
+
+        return new ContinuousRunOutcome(
+            HasChangedFiles: !string.IsNullOrWhiteSpace(run.ChangedFiles),
+            ValidationFailed: run.ValidationRun && !run.ValidationPassed,
+            TaskTitle: run.TaskTitle);
     }
 
     /// <summary>

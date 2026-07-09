@@ -237,6 +237,12 @@ public class RunOrchestrator
             _selectedSkills = SelectSkills(project, brief + "\n" + (proposal?.Title ?? ""), creativePlan, Log);
             _validationCommand = ResolveValidationCommand(project, proposal, Log);
             _tier = TaskTierClassifier.Classify(proposal, _riskAssessment, _lessons, intent);
+            if (!_opt.Continuous.LightTierForMaintenance
+                && string.Equals(proposal?.Source, "maintenance", StringComparison.OrdinalIgnoreCase)
+                && _tier is TaskTier.Light)
+            {
+                _tier = TaskTier.Standard;
+            }
             Log($"Model tier selected: {_tier}");
             var projectPromptDirectives = await _promptDirectives.LoadAsync(project.RepoPath, ct);
 
