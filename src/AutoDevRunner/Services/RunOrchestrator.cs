@@ -194,7 +194,15 @@ public class RunOrchestrator
 
             // 3b. Optional OpenAI creative planner (goal + KB grounded). Fail-soft.
             //     When no task is in progress, it proposes the next small task.
-            var creativePlan = await _planner.CreatePlanAsync(project, brief, goal, ct);
+            string? creativePlan = null;
+            if (PlannerCallPolicy.ShouldCallPlanner(_opt.Planner, project))
+            {
+                creativePlan = await _planner.CreatePlanAsync(project, brief, goal, ct);
+            }
+            else if (_opt.Planner.Enabled)
+            {
+                Log("Creative planner skipped: task already in progress and last run succeeded.");
+            }
             if (!string.IsNullOrWhiteSpace(creativePlan))
                 Log(string.IsNullOrWhiteSpace(project.CurrentTask)
                     ? "Creative planner proposed the next task toward the project goal."

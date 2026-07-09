@@ -220,6 +220,7 @@ public class PlannerOptions
 {
     /// <summary>Master switch. When false, no OpenAI call is made.</summary>
     public bool Enabled { get; set; } = false;
+    public bool SkipWhenTaskInProgress { get; set; } = true;
 
     /// <summary>Responses API model, e.g. "gpt-4.1".</summary>
     public string Model { get; set; } = "gpt-4.1";
