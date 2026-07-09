@@ -213,6 +213,43 @@ public class PromptBuilder
         return sb.ToString();
     }
 
+    public string BuildResume(Project project, string? validationCommand, RunLessons? lessons,
+        Config.RiskOptions? riskPolicy = null)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("You are resuming the existing AutoDev provider session for this repository.");
+        sb.AppendLine("Continue the same task using the context already present in this session. This is a delta prompt, so do not expect the full brief, roadmap, backlog, or memory here.");
+        sb.AppendLine();
+        sb.AppendLine("## Task reminder");
+        sb.AppendLine(string.IsNullOrWhiteSpace(project.CurrentTask)
+            ? "Continue the most valuable in-progress work from this session."
+            : project.CurrentTask.Trim());
+        sb.AppendLine();
+
+        if (lessons is { RepeatedlyFailingTasks.Count: > 0 })
+        {
+            sb.AppendLine("## Do NOT retry these the same way");
+            foreach (var task in lessons.RepeatedlyFailingTasks)
+                sb.AppendLine($"- {task}");
+            sb.AppendLine();
+        }
+
+        if (!string.IsNullOrWhiteSpace(validationCommand))
+        {
+            sb.AppendLine("## Validation command");
+            sb.AppendLine($"`{validationCommand}` must pass before the run can succeed.");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine(GuardrailService.PromptGuardrails(project.AllowRunOnMainBranch, project.AutoPush,
+            project.RepoPath, riskPolicy?.BlockFileDeletions ?? true, riskPolicy?.BlockOutOfProjectChanges ?? true));
+        sb.AppendLine();
+        AppendRequiredOutput(sb, skills: null);
+
+        var prompt = sb.ToString();
+        return prompt.Length <= 4000 ? prompt : ApplyBudget(prompt, new PromptOptions { MaxChars = 4000 });
+    }
+
     /// <summary>
     /// The required final summary block. Keeps the original v1 fields (TASK/DONE/…
     /// — still parsed and used for the email report and resume) and always adds

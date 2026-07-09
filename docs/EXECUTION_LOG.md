@@ -5,3 +5,4 @@
 2026-07-09T08:09:57Z | step 5 | AUTONOMY phase 4 | tests: 98 green | Added self-evolving project prompt directives with archived history and sidecar flag.
 2026-07-09T08:14:18Z | step 6 | TOKEN phase 2 | tests: 101 green | Added configurable prompt caps, priority shrinking, dedupe caps, and budget enforcement.
 2026-07-09T08:17:12Z | step 7 | TOKEN phase 3 | tests: 106 green | Added task tier classification, tiered provider argument routing, and tier sidecar reporting.
+2026-07-09T08:20:40Z | step 8 | TOKEN phase 4 | tests: 111 green | Added native resume decisions, delta prompts, resume templates, fallback, and sidecar resume tracking.

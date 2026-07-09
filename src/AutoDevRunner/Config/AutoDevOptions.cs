@@ -10,6 +10,7 @@ public class AutoDevOptions
     public BurnTokensOptions BurnTokens { get; set; } = new();
     public PromptOptions Prompt { get; set; } = new();
     public ModelRoutingOptions ModelRouting { get; set; } = new();
+    public ResumeOptions Resume { get; set; } = new();
     public PlannerOptions Planner { get; set; } = new();
     public ExecutionOptions Execution { get; set; } = new();
     public ValidationOptions Validation { get; set; } = new();
@@ -55,6 +56,13 @@ public class PromptOptions
 public class ModelRoutingOptions
 {
     public bool Enabled { get; set; } = false;
+}
+
+public class ResumeOptions
+{
+    public bool Enabled { get; set; } = false;
+    public int MaxResumedRuns { get; set; } = 3;
+    public bool ResetOnTaskChange { get; set; } = true;
 }
 
 public class ExecutionOptions
@@ -257,8 +265,18 @@ public class ProviderCliOptions
     /// <summary>Optional argument templates keyed by Light, Standard, or Deep.</summary>
     public Dictionary<string, string> Tiers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public string ResolveArguments(Services.TaskTier tier, bool modelRoutingEnabled)
+    public string ResumeArguments { get; set; } = string.Empty;
+
+    public string ResolveArguments(Services.TaskTier tier, bool modelRoutingEnabled,
+        string? resumeSessionId = null, bool resumeEnabled = false)
     {
+        if (resumeEnabled && !string.IsNullOrWhiteSpace(resumeSessionId)
+            && !string.IsNullOrWhiteSpace(ResumeArguments)
+            && ResumeArguments.Contains("{SESSION_ID}", StringComparison.Ordinal))
+        {
+            return ResumeArguments.Replace("{SESSION_ID}", resumeSessionId);
+        }
+
         if (modelRoutingEnabled && Tiers.TryGetValue(tier.ToString(), out var tierArguments)
             && !string.IsNullOrWhiteSpace(tierArguments))
         {

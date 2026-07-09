@@ -53,6 +53,8 @@ public class RunMetadata
     public decimal? CostUsd { get; set; }
     public string? Model { get; set; }
     public string? Tier { get; set; }
+    public bool Resumed { get; set; }
+    public int? SessionRuns { get; set; }
 
     /// <summary>Why the run failed/paused (if any). Read by the learning loop.</summary>
     public string? Reason { get; set; }

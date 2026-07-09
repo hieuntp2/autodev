@@ -60,6 +60,8 @@ public class RunOrchestrator
     private decimal? _costUsd;
     private string? _model;
     private TaskTier? _tier;
+    private bool _resumed;
+    private int? _sessionRuns;
     private string? _validationCommand;
     private int? _repairAttempts;
     private string? _sessionResult;
@@ -269,6 +271,9 @@ public class RunOrchestrator
             var timeout = TimeSpan.FromMinutes(Math.Max(1, project.MaxRunMinutes));
             var idleTimeout = TimeSpan.FromMinutes(Math.Max(1, _opt.Execution.IdleTimeoutMinutes));
             var heartbeat = TimeSpan.FromMinutes(Math.Max(1, _opt.Execution.HeartbeatMinutes));
+            var latestMeta = _runMeta.ReadAllForRepo(project.RepoPath).FirstOrDefault();
+            var previousSessionRuns = latestMeta?.SessionRuns ?? 0;
+            var lastTask = latestMeta?.Task;
             if (project.MaxRunMinutes < 60)
                 Log($"Hard time cap is {project.MaxRunMinutes} minutes; existing project settings below 60 minutes may interrupt long runs.");
 
@@ -287,9 +292,34 @@ public class RunOrchestrator
                 Log($"--- Invoking {provider.Kind} (hard cap {timeout.TotalMinutes:0}m, idle timeout {idleTimeout.TotalMinutes:0}m) ---");
                 _log.LogInformation("Project {Name}: invoking {Provider}", project.Name, provider.Kind);
 
+                var resumeDecision = ResumePolicy.Decide(_opt.Resume, project.ProviderSessionId,
+                    provider.Kind, project.LastProvider, project.CurrentTask, lastTask, previousSessionRuns);
+                var promptForProvider = resumeDecision.ShouldResume
+                    ? _promptBuilder.BuildResume(project, _validationCommand, _lessons, _opt.Risk)
+                    : prompt;
+                if (resumeDecision.ShouldResume)
+                {
+                    _resumed = true;
+                    _sessionRuns = resumeDecision.SessionRuns;
+                    run.Prompt = promptForProvider;
+                    Log($"Resuming {provider.Kind} session {resumeDecision.SessionId} with delta prompt ({promptForProvider.Length} chars).");
+                }
+
                 var providerStartedAt = DateTimeOffset.UtcNow;
-                invocation = await provider.RunAsync(prompt, project.RepoPath, timeout, Log, ct,
-                    idleTimeout, heartbeat, _tier ?? TaskTier.Standard, _opt.ModelRouting.Enabled);
+                invocation = await provider.RunAsync(promptForProvider, project.RepoPath, timeout, Log, ct,
+                    idleTimeout, heartbeat, _tier ?? TaskTier.Standard, _opt.ModelRouting.Enabled,
+                    resumeDecision.SessionId, resumeDecision.ShouldResume);
+                if (resumeDecision.ShouldResume && invocation.Outcome is not ProviderOutcome.Success)
+                {
+                    Log($"{provider.Kind} resume failed ({invocation.Outcome}); clearing session and retrying fresh.");
+                    project.ProviderSessionId = null;
+                    _resumed = false;
+                    _sessionRuns = 0;
+                    run.Prompt = prompt;
+                    providerStartedAt = DateTimeOffset.UtcNow;
+                    invocation = await provider.RunAsync(prompt, project.RepoPath, timeout, Log, ct,
+                        idleTimeout, heartbeat, _tier ?? TaskTier.Standard, _opt.ModelRouting.Enabled);
+                }
                 if (provider.Kind is ProviderKind.Codex)
                     invocation = EnrichCodexTokenUsage(invocation, providerStartedAt);
 
@@ -668,7 +698,9 @@ public class RunOrchestrator
                 _validationCommand!, run.ValidationOutput, currentChanged, _opt.Risk);
             var startedAt = DateTimeOffset.UtcNow;
             var repairInvocation = await provider.RunAsync(repairPrompt, project.RepoPath, timeout, log, ct,
-                idleTimeout, heartbeat, _tier ?? TaskTier.Standard, _opt.ModelRouting.Enabled);
+                idleTimeout, heartbeat, _tier ?? TaskTier.Standard, _opt.ModelRouting.Enabled,
+                project.ProviderSessionId,
+                _opt.Resume.Enabled && !string.IsNullOrWhiteSpace(project.ProviderSessionId));
             if (provider.Kind is ProviderKind.Codex)
                 repairInvocation = EnrichCodexTokenUsage(repairInvocation, startedAt);
 
@@ -868,6 +900,9 @@ public class RunOrchestrator
             md.AppendLine($"- Task source: {_taskSource}");
         if (_tier is not null)
             md.AppendLine($"- Model tier: {_tier}");
+        md.AppendLine($"- Resumed session: {_resumed}");
+        if (_sessionRuns is not null)
+            md.AppendLine($"- Session runs: {_sessionRuns}");
         md.AppendLine($"- Cost summary: {MeasurementSummary()}");
         md.AppendLine($"- Risk level: **{_riskAssessment.Level}**"
                       + (_riskAssessment.Reasons.Count > 0 ? $" — {string.Join("; ", _riskAssessment.Reasons)}" : ""));
@@ -922,6 +957,8 @@ public class RunOrchestrator
             CostUsd = _costUsd,
             Model = _model,
             Tier = _tier?.ToString(),
+            Resumed = _resumed,
+            SessionRuns = _sessionRuns,
             Reason = run.Reason,
             Stage = _stage.ToString(),
             Risk = _riskAssessment.Level.ToString(),

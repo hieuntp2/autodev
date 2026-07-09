@@ -42,5 +42,7 @@ public interface IAiProvider
         TimeSpan? idleTimeout = null,
         TimeSpan? heartbeatInterval = null,
         TaskTier tier = TaskTier.Standard,
-        bool modelRoutingEnabled = false);
+        bool modelRoutingEnabled = false,
+        string? resumeSessionId = null,
+        bool resumeEnabled = false);
 }
