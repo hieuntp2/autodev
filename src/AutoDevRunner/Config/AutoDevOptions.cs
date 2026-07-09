@@ -9,6 +9,7 @@ public class AutoDevOptions
     public EmailOptions Email { get; set; } = new();
     public BurnTokensOptions BurnTokens { get; set; } = new();
     public PromptOptions Prompt { get; set; } = new();
+    public ModelRoutingOptions ModelRouting { get; set; } = new();
     public PlannerOptions Planner { get; set; } = new();
     public ExecutionOptions Execution { get; set; } = new();
     public ValidationOptions Validation { get; set; } = new();
@@ -49,6 +50,11 @@ public class PromptOptions
     public int ResumeSummaryWithLessonsMaxChars { get; set; } = 1200;
     public int PromptDirectivesMaxChars { get; set; } = 1200;
     public int PromptDirectivesMinChars { get; set; } = 400;
+}
+
+public class ModelRoutingOptions
+{
+    public bool Enabled { get; set; } = false;
 }
 
 public class ExecutionOptions
@@ -247,6 +253,20 @@ public class ProviderCliOptions
 
     /// <summary>Argument template. "{PROMPT}" is replaced with the (escaped) prompt.</summary>
     public string Arguments { get; set; } = string.Empty;
+
+    /// <summary>Optional argument templates keyed by Light, Standard, or Deep.</summary>
+    public Dictionary<string, string> Tiers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public string ResolveArguments(Services.TaskTier tier, bool modelRoutingEnabled)
+    {
+        if (modelRoutingEnabled && Tiers.TryGetValue(tier.ToString(), out var tierArguments)
+            && !string.IsNullOrWhiteSpace(tierArguments))
+        {
+            return tierArguments;
+        }
+
+        return Arguments;
+    }
 }
 
 /// <summary>

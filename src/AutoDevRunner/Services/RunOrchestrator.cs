@@ -59,6 +59,7 @@ public class RunOrchestrator
     private int? _outputTokens;
     private decimal? _costUsd;
     private string? _model;
+    private TaskTier? _tier;
     private string? _validationCommand;
     private int? _repairAttempts;
     private string? _sessionResult;
@@ -233,6 +234,8 @@ public class RunOrchestrator
             // 3f. Select global AutoDev skills (also match against the proposed title).
             _selectedSkills = SelectSkills(project, brief + "\n" + (proposal?.Title ?? ""), creativePlan, Log);
             _validationCommand = ResolveValidationCommand(project, proposal, Log);
+            _tier = TaskTierClassifier.Classify(proposal, _riskAssessment, _lessons, intent);
+            Log($"Model tier selected: {_tier}");
             var projectPromptDirectives = await _promptDirectives.LoadAsync(project.RepoPath, ct);
 
             // 4. Build prompt. Task is now planned.
@@ -286,7 +289,7 @@ public class RunOrchestrator
 
                 var providerStartedAt = DateTimeOffset.UtcNow;
                 invocation = await provider.RunAsync(prompt, project.RepoPath, timeout, Log, ct,
-                    idleTimeout, heartbeat);
+                    idleTimeout, heartbeat, _tier ?? TaskTier.Standard, _opt.ModelRouting.Enabled);
                 if (provider.Kind is ProviderKind.Codex)
                     invocation = EnrichCodexTokenUsage(invocation, providerStartedAt);
 
@@ -665,7 +668,7 @@ public class RunOrchestrator
                 _validationCommand!, run.ValidationOutput, currentChanged, _opt.Risk);
             var startedAt = DateTimeOffset.UtcNow;
             var repairInvocation = await provider.RunAsync(repairPrompt, project.RepoPath, timeout, log, ct,
-                idleTimeout, heartbeat);
+                idleTimeout, heartbeat, _tier ?? TaskTier.Standard, _opt.ModelRouting.Enabled);
             if (provider.Kind is ProviderKind.Codex)
                 repairInvocation = EnrichCodexTokenUsage(repairInvocation, startedAt);
 
@@ -863,6 +866,8 @@ public class RunOrchestrator
         md.AppendLine($"- Lifecycle stage reached: **{_stage}**");
         if (!string.IsNullOrWhiteSpace(_taskSource))
             md.AppendLine($"- Task source: {_taskSource}");
+        if (_tier is not null)
+            md.AppendLine($"- Model tier: {_tier}");
         md.AppendLine($"- Cost summary: {MeasurementSummary()}");
         md.AppendLine($"- Risk level: **{_riskAssessment.Level}**"
                       + (_riskAssessment.Reasons.Count > 0 ? $" — {string.Join("; ", _riskAssessment.Reasons)}" : ""));
@@ -916,6 +921,7 @@ public class RunOrchestrator
             OutputTokens = _outputTokens,
             CostUsd = _costUsd,
             Model = _model,
+            Tier = _tier?.ToString(),
             Reason = run.Reason,
             Stage = _stage.ToString(),
             Risk = _riskAssessment.Level.ToString(),

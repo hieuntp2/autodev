@@ -1,4 +1,5 @@
 using AutoDevRunner.Models;
+using AutoDevRunner.Services;
 
 namespace AutoDevRunner.Providers;
 
@@ -39,5 +40,7 @@ public interface IAiProvider
         Action<string>? onOutput = null,
         CancellationToken ct = default,
         TimeSpan? idleTimeout = null,
-        TimeSpan? heartbeatInterval = null);
+        TimeSpan? heartbeatInterval = null,
+        TaskTier tier = TaskTier.Standard,
+        bool modelRoutingEnabled = false);
 }

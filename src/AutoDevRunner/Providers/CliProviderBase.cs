@@ -1,5 +1,6 @@
 using AutoDevRunner.Config;
 using AutoDevRunner.Models;
+using AutoDevRunner.Services;
 
 namespace AutoDevRunner.Providers;
 
@@ -28,7 +29,9 @@ public abstract class CliProviderBase : IAiProvider
         Action<string>? onOutput = null,
         CancellationToken ct = default,
         TimeSpan? idleTimeout = null,
-        TimeSpan? heartbeatInterval = null)
+        TimeSpan? heartbeatInterval = null,
+        TaskTier tier = TaskTier.Standard,
+        bool modelRoutingEnabled = false)
     {
         // Three ways to hand the prompt to the CLI, chosen by the args template:
         //   no placeholder -> stdin (default). No OS arg-length limit — required:
@@ -41,19 +44,21 @@ public abstract class CliProviderBase : IAiProvider
         string? stdin = null;
         string arguments;
 
-        if (_options.Arguments.Contains("{PROMPT_FILE}"))
+        var argumentTemplate = _options.ResolveArguments(tier, modelRoutingEnabled);
+
+        if (argumentTemplate.Contains("{PROMPT_FILE}"))
         {
             promptFile = Path.Combine(Path.GetTempPath(), $"autodev-prompt-{Guid.NewGuid():N}.txt");
             await File.WriteAllTextAsync(promptFile, prompt, ct);
-            arguments = _options.Arguments.Replace("{PROMPT_FILE}", $"\"{promptFile}\"");
+            arguments = argumentTemplate.Replace("{PROMPT_FILE}", $"\"{promptFile}\"");
         }
-        else if (_options.Arguments.Contains("{PROMPT}"))
+        else if (argumentTemplate.Contains("{PROMPT}"))
         {
-            arguments = _options.Arguments.Replace("{PROMPT}", EscapeForArg(prompt));
+            arguments = argumentTemplate.Replace("{PROMPT}", EscapeForArg(prompt));
         }
         else
         {
-            arguments = _options.Arguments;
+            arguments = argumentTemplate;
             stdin = prompt;
         }
 
@@ -70,7 +75,10 @@ public abstract class CliProviderBase : IAiProvider
                 try { File.Delete(promptFile); } catch { /* best effort */ }
         }
 
-        return BuildInvocation(result, timeout);
+        var invocation = BuildInvocation(result, timeout);
+        return string.IsNullOrWhiteSpace(invocation.Model)
+            ? invocation with { Model = ExtractModel(arguments) }
+            : invocation;
     }
 
     protected virtual ProviderInvocation BuildInvocation(ProcessResult result, TimeSpan timeout)
@@ -108,4 +116,17 @@ public abstract class CliProviderBase : IAiProvider
     /// </summary>
     private static string EscapeForArg(string prompt) =>
         prompt.Replace("\"", "\\\"");
+
+    private static string? ExtractModel(string arguments)
+    {
+        var parts = arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (var i = 0; i < parts.Length; i++)
+        {
+            if ((parts[i] == "-m" || parts[i] == "--model") && i + 1 < parts.Length)
+                return parts[i + 1].Trim('"');
+            if (parts[i].StartsWith("--model=", StringComparison.Ordinal))
+                return parts[i]["--model=".Length..].Trim('"');
+        }
+        return null;
+    }
 }
