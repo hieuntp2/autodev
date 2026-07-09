@@ -31,7 +31,7 @@ public class GuardrailService
         var scope = string.IsNullOrWhiteSpace(repoPath) ? "the project repository" : $"`{repoPath}`";
         var deletionRule = blockDeletions
             ? "- Do NOT delete files. If something looks obsolete, leave it (or empty its body) rather than removing it — the runner blocks and reverts any run that deletes files.\n"
-            : string.Empty;
+            : "- Deletions inside the project are permitted when they serve this task; keep them focused, intentional, and easy to justify in the summary.\n";
         var scopeRule = blockOutOfProject
             ? $"- Stay INSIDE the project. Only create/modify files under {scope}. Do NOT touch, create, or delete anything outside it (no absolute paths, no `..` escaping the repo, no edits to your home dir, system files, or other projects) — the runner blocks any run that writes outside the project.\n"
             : string.Empty;

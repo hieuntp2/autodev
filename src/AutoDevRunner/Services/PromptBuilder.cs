@@ -130,7 +130,7 @@ public class PromptBuilder
         sb.AppendLine("- Leave the project buildable; add/update tests where reasonable.");
         if (risk is not null)
             sb.AppendLine($"- Assessed risk level for this task: {risk.ToString()!.ToLowerInvariant()}. "
-                          + "Avoid escalating scope (no unrequested migrations, mass deletions, or large refactors).");
+                          + "Avoid escalating scope; keep risky changes small, reversible, and clearly tied to the goal.");
         sb.AppendLine("- Follow the hard safety rules below.");
         sb.AppendLine();
 

@@ -57,4 +57,13 @@ public class AutoDevOptionsTests
 
         Assert.Equal(240, project.MaxRunMinutes);
     }
+
+    [Fact]
+    public void Default_risk_policy_allows_in_repo_deletions_but_blocks_out_of_project_changes()
+    {
+        var opt = new AutoDevOptions();
+
+        Assert.False(opt.Risk.BlockFileDeletions);
+        Assert.True(opt.Risk.BlockOutOfProjectChanges);
+    }
 }

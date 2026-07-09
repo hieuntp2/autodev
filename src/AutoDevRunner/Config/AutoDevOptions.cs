@@ -95,11 +95,11 @@ public class RiskOptions
 
     /// <summary>
     /// Hard guard, independent of <see cref="AllowRiskyAutonomousRuns"/>. When
-    /// true (default), a run that deletes any file is blocked (its changes are
-    /// left uncommitted for manual review) even when risky runs are allowed. The
-    /// agent is also told in-prompt never to delete files.
+    /// true, a run that deletes any file is blocked (its changes are left
+    /// uncommitted for manual review) even when risky runs are allowed. False by
+    /// default so normal in-repo refactoring can remove obsolete files.
     /// </summary>
-    public bool BlockFileDeletions { get; set; } = true;
+    public bool BlockFileDeletions { get; set; } = false;
 
     /// <summary>
     /// Hard guard, independent of <see cref="AllowRiskyAutonomousRuns"/>. When
