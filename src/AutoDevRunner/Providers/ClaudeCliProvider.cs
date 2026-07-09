@@ -14,7 +14,7 @@ public class ClaudeCliProvider : CliProviderBase
 
     protected override ProviderInvocation BuildInvocation(ProcessResult result, TimeSpan timeout)
     {
-        var parsed = ClaudeJsonOutput.Parse(result.Combined);
+        var parsed = ClaudeJsonOutput.Parse(result.StdOut);
         if (!parsed.IsJsonEnvelope)
             return base.BuildInvocation(result, timeout);
 
