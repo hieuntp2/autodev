@@ -92,6 +92,16 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.EnsureCreatedAsync();
 
+    var orphaned = await db.Runs
+        .Where(r => (r.Status == RunStatus.Running || r.Status == RunStatus.Pending) && r.FinishedAt == null)
+        .ToListAsync();
+    var cleaned = RunStartupCleanup.MarkOrphanedRuns(orphaned, DateTime.UtcNow);
+    if (cleaned > 0)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+        logger.LogWarning("Marked {Count} orphaned run(s) failed after runner restart.", cleaned);
+    }
+
     foreach (var kind in Enum.GetValues<ProviderKind>())
         if (!await db.ProviderStates.AnyAsync(p => p.Provider == kind))
             db.ProviderStates.Add(new ProviderState { Provider = kind });

@@ -26,7 +26,9 @@ public abstract class CliProviderBase : IAiProvider
         string workingDirectory,
         TimeSpan timeout,
         Action<string>? onOutput = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        TimeSpan? idleTimeout = null,
+        TimeSpan? heartbeatInterval = null)
     {
         // Three ways to hand the prompt to the CLI, chosen by the args template:
         //   no placeholder -> stdin (default). No OS arg-length limit — required:
@@ -59,7 +61,8 @@ public abstract class CliProviderBase : IAiProvider
         try
         {
             result = await _runner.RunAsync(
-                _options.Command, arguments, workingDirectory, timeout, onOutput, ct, stdin);
+                _options.Command, arguments, workingDirectory, timeout, onOutput, ct, stdin,
+                idleTimeout, heartbeatInterval);
         }
         finally
         {
@@ -75,18 +78,26 @@ public abstract class CliProviderBase : IAiProvider
         var outcome = ProviderOutputAnalyzer.Classify(result.ExitCode, result.TimedOut, result.Combined);
         var usage = ProviderOutputAnalyzer.ExtractUsage(result.Combined);
         var sessionId = ProviderOutputAnalyzer.ExtractSessionId(result.Combined);
-        var reason = BuildReason(outcome, result.ExitCode, result.Combined, timeout);
+        var reason = BuildReason(outcome, result.ExitCode, result.Combined, timeout,
+            result.TimeoutKind, result.TimeoutLimit);
 
         return new ProviderInvocation(outcome, result.Combined, usage, reason, sessionId);
     }
 
-    protected static string? BuildReason(ProviderOutcome outcome, int exitCode, string output, TimeSpan timeout) =>
+    protected static string? BuildReason(
+        ProviderOutcome outcome,
+        int exitCode,
+        string output,
+        TimeSpan timeout,
+        ProcessTimeoutKind? timeoutKind = null,
+        TimeSpan? timeoutLimit = null) =>
         outcome switch
         {
             ProviderOutcome.QuotaLimit => ProviderOutputAnalyzer.ExtractResetHint(output)
                                           ?? "Provider reported quota / rate limit.",
             ProviderOutcome.AuthError => "Provider authentication failed.",
-            ProviderOutcome.Timeout => $"Run exceeded the {timeout.TotalMinutes:0} minute limit.",
+            ProviderOutcome.Timeout => ProcessTimeoutPolicy.BuildReason(
+                timeoutKind ?? ProcessTimeoutKind.HardBackstop, timeoutLimit ?? timeout),
             ProviderOutcome.Error => $"Provider exited with code {exitCode}.",
             _ => null
         };

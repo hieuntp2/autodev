@@ -9,6 +9,7 @@ public class AutoDevOptions
     public EmailOptions Email { get; set; } = new();
     public BurnTokensOptions BurnTokens { get; set; } = new();
     public PlannerOptions Planner { get; set; } = new();
+    public ExecutionOptions Execution { get; set; } = new();
     public ContinuousOptions Continuous { get; set; } = new();
     public SkillsOptions Skills { get; set; } = new();
     public ProjectMemoryOptions ProjectMemory { get; set; } = new();
@@ -31,6 +32,12 @@ public class AutoDevOptions
 public class BurnTokensOptions
 {
     public bool? Enabled { get; set; }
+}
+
+public class ExecutionOptions
+{
+    public int IdleTimeoutMinutes { get; set; } = 15;
+    public int HeartbeatMinutes { get; set; } = 5;
 }
 
 /// <summary>

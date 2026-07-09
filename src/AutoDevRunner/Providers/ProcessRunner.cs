@@ -3,7 +3,13 @@ using System.Text;
 
 namespace AutoDevRunner.Providers;
 
-public record ProcessResult(int ExitCode, string StdOut, string StdErr, bool TimedOut)
+public record ProcessResult(
+    int ExitCode,
+    string StdOut,
+    string StdErr,
+    bool TimedOut,
+    ProcessTimeoutKind? TimeoutKind = null,
+    TimeSpan? TimeoutLimit = null)
 {
     public string Combined => string.IsNullOrEmpty(StdErr) ? StdOut : $"{StdOut}\n{StdErr}";
 }
@@ -21,7 +27,9 @@ public class ProcessRunner
         TimeSpan timeout,
         Action<string>? onOutput = null,
         CancellationToken ct = default,
-        string? stdin = null)
+        string? stdin = null,
+        TimeSpan? idleTimeout = null,
+        TimeSpan? heartbeatInterval = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -42,17 +50,28 @@ public class ProcessRunner
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
+        var startedAt = DateTimeOffset.UtcNow;
+        var lastOutputAt = startedAt;
+        var outputLock = new object();
 
         process.OutputDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
-            stdout.AppendLine(e.Data);
+            lock (outputLock)
+            {
+                stdout.AppendLine(e.Data);
+                lastOutputAt = DateTimeOffset.UtcNow;
+            }
             onOutput?.Invoke(e.Data);
         };
         process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
-            stderr.AppendLine(e.Data);
+            lock (outputLock)
+            {
+                stderr.AppendLine(e.Data);
+                lastOutputAt = DateTimeOffset.UtcNow;
+            }
             onOutput?.Invoke(e.Data);
         };
 
@@ -82,20 +101,56 @@ public class ProcessRunner
             }
         }
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(timeout);
+        var waitTask = process.WaitForExitAsync(ct);
+        var nextHeartbeatAt = heartbeatInterval is { TotalMilliseconds: > 0 }
+            ? DateTimeOffset.UtcNow.Add(heartbeatInterval.Value)
+            : DateTimeOffset.MaxValue;
 
         try
         {
-            await process.WaitForExitAsync(timeoutCts.Token);
+            while (true)
+            {
+                var delayTask = Task.Delay(TimeSpan.FromSeconds(1), ct);
+                var completed = await Task.WhenAny(waitTask, delayTask);
+                if (completed == waitTask)
+                {
+                    await waitTask;
+                    return new ProcessResult(process.ExitCode, stdout.ToString(), stderr.ToString(), TimedOut: false);
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                if (now - startedAt >= timeout)
+                {
+                    TryKill(process);
+                    return new ProcessResult(-1, stdout.ToString(), stderr.ToString(), TimedOut: true,
+                        ProcessTimeoutKind.HardBackstop, timeout);
+                }
+
+                DateTimeOffset lastOutputSnapshot;
+                lock (outputLock) lastOutputSnapshot = lastOutputAt;
+
+                if (idleTimeout is { TotalMilliseconds: > 0 }
+                    && ProcessTimeoutPolicy.CheckIdle(lastOutputSnapshot, now, idleTimeout.Value)
+                        == ProcessWatchdogDecision.KillForIdle)
+                {
+                    TryKill(process);
+                    return new ProcessResult(-1, stdout.ToString(), stderr.ToString(), TimedOut: true,
+                        ProcessTimeoutKind.Idle, idleTimeout.Value);
+                }
+
+                if (now >= nextHeartbeatAt)
+                {
+                    onOutput?.Invoke($"still running - last output {(int)(now - lastOutputSnapshot).TotalSeconds}s ago");
+                    nextHeartbeatAt = now.Add(heartbeatInterval!.Value);
+                }
+            }
         }
         catch (OperationCanceledException)
         {
             TryKill(process);
-            return new ProcessResult(-1, stdout.ToString(), stderr.ToString(), TimedOut: true);
+            return new ProcessResult(-1, stdout.ToString(), stderr.ToString(), TimedOut: true,
+                ProcessTimeoutKind.HardBackstop, timeout);
         }
-
-        return new ProcessResult(process.ExitCode, stdout.ToString(), stderr.ToString(), TimedOut: false);
     }
 
     private static void TryKill(Process p)

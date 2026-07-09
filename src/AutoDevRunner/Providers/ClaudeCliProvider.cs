@@ -22,7 +22,8 @@ public class ClaudeCliProvider : CliProviderBase
         var usage = FormatUsage(parsed.InputTokens, parsed.OutputTokens, parsed.CostUsd)
                     ?? ProviderOutputAnalyzer.ExtractUsage(result.Combined);
         var sessionId = parsed.SessionId ?? ProviderOutputAnalyzer.ExtractSessionId(result.Combined);
-        var reason = BuildReason(outcome, result.ExitCode, result.Combined, timeout);
+        var reason = BuildReason(outcome, result.ExitCode, result.Combined, timeout,
+            result.TimeoutKind, result.TimeoutLimit);
 
         return new ProviderInvocation(
             outcome,

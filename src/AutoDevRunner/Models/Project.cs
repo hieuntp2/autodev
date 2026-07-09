@@ -62,7 +62,7 @@ public class Project
     public string? ValidationCommand { get; set; }
 
     // --- Limits ---
-    public int MaxRunMinutes { get; set; } = 30;
+    public int MaxRunMinutes { get; set; } = 240;
 
     // --- Free-form ---
     public string? Notes { get; set; }

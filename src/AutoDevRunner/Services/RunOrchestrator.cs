@@ -137,7 +137,10 @@ public class RunOrchestrator
             logBuffer.AppendLine(line);
             // Mirror to the file log so a live run can be followed with
             // Logging:File:MinLevel=Debug (the buffer is only persisted at the end).
-            _log.LogDebug("run#{RunId} {Line}", run.Id, line);
+            if (line.StartsWith("still running - last output ", StringComparison.Ordinal))
+                _log.LogInformation("run#{RunId} {Line}", run.Id, line);
+            else
+                _log.LogDebug("run#{RunId} {Line}", run.Id, line);
         }
 
         try
@@ -250,6 +253,10 @@ public class RunOrchestrator
 
             ProviderInvocation? invocation = null;
             var timeout = TimeSpan.FromMinutes(Math.Max(1, project.MaxRunMinutes));
+            var idleTimeout = TimeSpan.FromMinutes(Math.Max(1, _opt.Execution.IdleTimeoutMinutes));
+            var heartbeat = TimeSpan.FromMinutes(Math.Max(1, _opt.Execution.HeartbeatMinutes));
+            if (project.MaxRunMinutes < 60)
+                Log($"Hard time cap is {project.MaxRunMinutes} minutes; existing project settings below 60 minutes may interrupt long runs.");
 
             foreach (var provider in order)
             {
@@ -263,11 +270,12 @@ public class RunOrchestrator
 
                 run.Provider = provider.Kind;
                 _stage = LifecycleStage.Running;
-                Log($"--- Invoking {provider.Kind} (timeout {timeout.TotalMinutes:0}m) ---");
+                Log($"--- Invoking {provider.Kind} (hard cap {timeout.TotalMinutes:0}m, idle timeout {idleTimeout.TotalMinutes:0}m) ---");
                 _log.LogInformation("Project {Name}: invoking {Provider}", project.Name, provider.Kind);
 
                 var providerStartedAt = DateTimeOffset.UtcNow;
-                invocation = await provider.RunAsync(prompt, project.RepoPath, timeout, Log, ct);
+                invocation = await provider.RunAsync(prompt, project.RepoPath, timeout, Log, ct,
+                    idleTimeout, heartbeat);
                 if (provider.Kind is ProviderKind.Codex)
                     invocation = EnrichCodexTokenUsage(invocation, providerStartedAt);
 

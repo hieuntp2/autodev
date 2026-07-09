@@ -1,4 +1,5 @@
 using AutoDevRunner.Config;
+using AutoDevRunner.Models;
 using Xunit;
 
 namespace AutoDevRunner.Tests;
@@ -38,5 +39,22 @@ public class AutoDevOptionsTests
         };
 
         Assert.True(opt.BurnTokensEnabled);
+    }
+
+    [Fact]
+    public void Execution_defaults_use_idle_timeout_and_heartbeat()
+    {
+        var opt = new AutoDevOptions();
+
+        Assert.Equal(15, opt.Execution.IdleTimeoutMinutes);
+        Assert.Equal(5, opt.Execution.HeartbeatMinutes);
+    }
+
+    [Fact]
+    public void New_projects_default_to_long_hard_backstop()
+    {
+        var project = new Project();
+
+        Assert.Equal(240, project.MaxRunMinutes);
     }
 }

@@ -37,5 +37,7 @@ public interface IAiProvider
         string workingDirectory,
         TimeSpan timeout,
         Action<string>? onOutput = null,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        TimeSpan? idleTimeout = null,
+        TimeSpan? heartbeatInterval = null);
 }
