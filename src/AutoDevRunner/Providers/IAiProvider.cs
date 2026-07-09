@@ -16,7 +16,11 @@ public record ProviderInvocation(
     string Output,
     string? Usage,
     string? Reason,
-    string? SessionId);
+    string? SessionId,
+    int? InputTokens = null,
+    int? OutputTokens = null,
+    decimal? CostUsd = null,
+    string? Model = null);
 
 /// <summary>An AI CLI adapter (Codex, Claude, ...).</summary>
 public interface IAiProvider

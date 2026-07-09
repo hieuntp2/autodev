@@ -39,6 +39,7 @@ public class RunOrchestrator
     private readonly TaskProposer _proposer;
     private readonly RunHistoryService _history;
     private readonly RetrospectiveWriter _retro;
+    private readonly CodexUsageReader _codexUsage;
     private readonly AutoDevOptions _opt;
     private readonly ILogger<RunOrchestrator> _log;
 
@@ -51,6 +52,12 @@ public class RunOrchestrator
     private List<string> _nextSuggestedTasks = new();
     private string? _taskSource;
     private RunLessons _lessons = RunLessons.Empty;
+    private int? _promptChars;
+    private int? _promptEstTokens;
+    private int? _inputTokens;
+    private int? _outputTokens;
+    private decimal? _costUsd;
+    private string? _model;
 
     public RunOrchestrator(
         AppDbContext db, GitService git, GuardrailService guard,
@@ -61,7 +68,7 @@ public class RunOrchestrator
         SkillRegistry skills, SkillExporter skillExporter,
         ProjectGoalService goals, RiskAssessor risk, ArtifactTracker artifacts,
         ProjectMemoryWriter memory, RunMetadataStore runMeta, TaskProposer proposer,
-        RunHistoryService history, RetrospectiveWriter retro,
+        RunHistoryService history, RetrospectiveWriter retro, CodexUsageReader codexUsage,
         IOptions<AutoDevOptions> opt, ILogger<RunOrchestrator> log)
     {
         _db = db; _git = git; _guard = guard; _promptBuilder = promptBuilder;
@@ -70,6 +77,7 @@ public class RunOrchestrator
         _proc = proc; _lock = runLock; _skills = skills; _skillExporter = skillExporter;
         _goals = goals; _risk = risk; _artifacts = artifacts; _memory = memory; _runMeta = runMeta;
         _proposer = proposer; _history = history; _retro = retro; _opt = opt.Value; _log = log;
+        _codexUsage = codexUsage;
     }
 
     public Task<RunRecord?> RunProjectAsync(int projectId, CancellationToken ct = default) =>
@@ -219,6 +227,9 @@ public class RunOrchestrator
             _stage = LifecycleStage.Planned;
             var prompt = _promptBuilder.Build(project, brief, run, creativePlan, _selectedSkills,
                 goal, proposal, _riskAssessment.Level, _opt.Risk, _lessons);
+            _promptChars = prompt.Length;
+            _promptEstTokens = EstimateTokens(prompt.Length);
+            Log($"Prompt prepared: {_promptChars} chars (~{_promptEstTokens} tokens).");
 
             // Persist the exact prompt, plan and task on the run so prompt/plan
             // evolution is queryable in the DB (not just in the .ai-runner files).
@@ -255,7 +266,11 @@ public class RunOrchestrator
                 Log($"--- Invoking {provider.Kind} (timeout {timeout.TotalMinutes:0}m) ---");
                 _log.LogInformation("Project {Name}: invoking {Provider}", project.Name, provider.Kind);
 
+                var providerStartedAt = DateTimeOffset.UtcNow;
                 invocation = await provider.RunAsync(prompt, project.RepoPath, timeout, Log, ct);
+                if (provider.Kind is ProviderKind.Codex)
+                    invocation = EnrichCodexTokenUsage(invocation, providerStartedAt);
+
                 await UpdateProviderStateAsync(provider.Kind, invocation, ct);
 
                 if (invocation.Outcome is ProviderOutcome.QuotaLimit)
@@ -281,6 +296,11 @@ public class RunOrchestrator
             }
 
             run.Usage = invocation.Usage ?? "Unknown / provider does not expose usage";
+            _inputTokens = invocation.InputTokens;
+            _outputTokens = invocation.OutputTokens;
+            _costUsd = invocation.CostUsd;
+            _model = invocation.Model;
+            Log($"Prompt: {_promptChars ?? 0} chars (~{_promptEstTokens ?? 0} tokens); provider used {FormatCount(_inputTokens)} in / {FormatCount(_outputTokens)} out.");
             if (!string.IsNullOrWhiteSpace(invocation.SessionId))
                 project.ProviderSessionId = invocation.SessionId;
 
@@ -400,6 +420,51 @@ public class RunOrchestrator
     }
 
     // ---- helpers ----
+
+    private ProviderInvocation EnrichCodexTokenUsage(ProviderInvocation invocation, DateTimeOffset providerStartedAt)
+    {
+        if (invocation.InputTokens is not null || invocation.OutputTokens is not null)
+            return invocation;
+
+        var usage = _codexUsage.TryReadLatestTurnUsage(providerStartedAt.AddSeconds(-5));
+        if (usage is null) return invocation;
+
+        return invocation with
+        {
+            InputTokens = usage.InputTokens,
+            OutputTokens = usage.OutputTokens,
+            Model = invocation.Model ?? usage.Model,
+            Usage = invocation.Usage ?? FormatInvocationUsage(usage.InputTokens, usage.OutputTokens, invocation.CostUsd)
+        };
+    }
+
+    private static int EstimateTokens(int chars) => (int)Math.Ceiling(chars / 4.0);
+
+    private static string FormatCount(int? count) => count?.ToString("N0") ?? "?";
+
+    private static string? FormatInvocationUsage(int? inputTokens, int? outputTokens, decimal? costUsd)
+    {
+        var parts = new List<string>();
+        if (inputTokens is not null || outputTokens is not null)
+            parts.Add($"in {FormatCount(inputTokens)} / out {FormatCount(outputTokens)}");
+        if (costUsd is not null)
+            parts.Add($"${costUsd.Value:0.######}");
+        return parts.Count == 0 ? null : string.Join(", ", parts);
+    }
+
+    private string MeasurementSummary()
+    {
+        var parts = new List<string>();
+        if (_promptChars is not null)
+            parts.Add($"prompt {_promptChars.Value:N0} chars (~{_promptEstTokens ?? EstimateTokens(_promptChars.Value):N0} tokens)");
+        if (_inputTokens is not null || _outputTokens is not null)
+            parts.Add($"provider {FormatCount(_inputTokens)} in / {FormatCount(_outputTokens)} out");
+        if (_costUsd is not null)
+            parts.Add($"cost ${_costUsd.Value:0.######}");
+        if (!string.IsNullOrWhiteSpace(_model))
+            parts.Add($"model {_model}");
+        return parts.Count == 0 ? "prompt/token usage unknown" : string.Join("; ", parts);
+    }
 
     /// <summary>
     /// Match the run's task text (brief + notes + resume task + creative plan)
@@ -614,7 +679,7 @@ public class RunOrchestrator
         await _db.SaveChangesAsync(ct);
 
         // Email report.
-        var report = _email.BuildReport(project, run, summary);
+        var report = _email.BuildReport(project, run, summary, MeasurementSummary());
         var subject = $"[AutoDev] {project.Name} — {status}";
         run.EmailSent = await _email.SendAsync(subject, report, project.Name, status.ToString(), ct);
         await _db.SaveChangesAsync(ct);
@@ -660,6 +725,7 @@ public class RunOrchestrator
         md.AppendLine($"- Lifecycle stage reached: **{_stage}**");
         if (!string.IsNullOrWhiteSpace(_taskSource))
             md.AppendLine($"- Task source: {_taskSource}");
+        md.AppendLine($"- Cost summary: {MeasurementSummary()}");
         md.AppendLine($"- Risk level: **{_riskAssessment.Level}**"
                       + (_riskAssessment.Reasons.Count > 0 ? $" — {string.Join("; ", _riskAssessment.Reasons)}" : ""));
         if (_memoryUpdates.Count > 0)
@@ -706,6 +772,12 @@ public class RunOrchestrator
             Branch = run.Branch,
             CommitSha = run.CommitSha,
             Task = run.TaskTitle ?? project.CurrentTask,
+            PromptChars = _promptChars,
+            PromptEstTokens = _promptEstTokens,
+            InputTokens = _inputTokens,
+            OutputTokens = _outputTokens,
+            CostUsd = _costUsd,
+            Model = _model,
             Reason = run.Reason,
             Stage = _stage.ToString(),
             Risk = _riskAssessment.Level.ToString(),

@@ -67,22 +67,29 @@ public abstract class CliProviderBase : IAiProvider
                 try { File.Delete(promptFile); } catch { /* best effort */ }
         }
 
+        return BuildInvocation(result, timeout);
+    }
+
+    protected virtual ProviderInvocation BuildInvocation(ProcessResult result, TimeSpan timeout)
+    {
         var outcome = ProviderOutputAnalyzer.Classify(result.ExitCode, result.TimedOut, result.Combined);
         var usage = ProviderOutputAnalyzer.ExtractUsage(result.Combined);
         var sessionId = ProviderOutputAnalyzer.ExtractSessionId(result.Combined);
-
-        string? reason = outcome switch
-        {
-            ProviderOutcome.QuotaLimit => ProviderOutputAnalyzer.ExtractResetHint(result.Combined)
-                                          ?? "Provider reported quota / rate limit.",
-            ProviderOutcome.AuthError => "Provider authentication failed.",
-            ProviderOutcome.Timeout => $"Run exceeded the {timeout.TotalMinutes:0} minute limit.",
-            ProviderOutcome.Error => $"Provider exited with code {result.ExitCode}.",
-            _ => null
-        };
+        var reason = BuildReason(outcome, result.ExitCode, result.Combined, timeout);
 
         return new ProviderInvocation(outcome, result.Combined, usage, reason, sessionId);
     }
+
+    protected static string? BuildReason(ProviderOutcome outcome, int exitCode, string output, TimeSpan timeout) =>
+        outcome switch
+        {
+            ProviderOutcome.QuotaLimit => ProviderOutputAnalyzer.ExtractResetHint(output)
+                                          ?? "Provider reported quota / rate limit.",
+            ProviderOutcome.AuthError => "Provider authentication failed.",
+            ProviderOutcome.Timeout => $"Run exceeded the {timeout.TotalMinutes:0} minute limit.",
+            ProviderOutcome.Error => $"Provider exited with code {exitCode}.",
+            _ => null
+        };
 
     /// <summary>
     /// Replace embedded double quotes so the argument template's surrounding

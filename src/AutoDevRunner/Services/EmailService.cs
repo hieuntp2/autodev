@@ -30,7 +30,7 @@ public class EmailService
         && !string.IsNullOrWhiteSpace(_opt.PublicKey)
         && !string.IsNullOrWhiteSpace(_opt.ToEmail);
 
-    public string BuildReport(Project project, RunRecord run, ParsedSummary? summary)
+    public string BuildReport(Project project, RunRecord run, ParsedSummary? summary, string? costSummary = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"AutoDev run report — {project.Name}");
@@ -43,6 +43,8 @@ public class EmailService
         sb.AppendLine($"Started  : {run.StartedAt:u}");
         sb.AppendLine($"Finished : {run.FinishedAt:u}");
         sb.AppendLine($"Usage    : {run.Usage ?? "Unknown / provider does not expose usage"}");
+        if (!string.IsNullOrWhiteSpace(costSummary))
+            sb.AppendLine($"Cost     : {costSummary}");
         sb.AppendLine();
 
         if (summary is not null)

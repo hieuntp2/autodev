@@ -32,6 +32,8 @@ public sealed record CodexUsage(CodexLimitWindow? Primary, CodexLimitWindow? Sec
         new[] { Primary, Secondary }.Where(w => w is not null && w.IsCurrent(now)).Cast<CodexLimitWindow>().ToList();
 }
 
+public sealed record CodexTokenUsage(int? InputTokens, int? OutputTokens, string? Model);
+
 /// <summary>
 /// Best-effort reader of Codex quota usage. The Codex CLI has no headless
 /// "usage" command, but it appends rate-limit snapshots (used_percent per
@@ -75,6 +77,58 @@ public class CodexUsageReader
         return null;
     }
 
+    public virtual CodexTokenUsage? TryReadLatestTurnUsage(DateTimeOffset? since = null)
+    {
+        try
+        {
+            var root = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "sessions");
+            if (!Directory.Exists(root)) return null;
+
+            var files = Directory.EnumerateFiles(root, "rollout-*.jsonl", SearchOption.AllDirectories)
+                .Select(f => new FileInfo(f))
+                .Where(f => since is null || f.LastWriteTimeUtc >= since.Value.UtcDateTime)
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .Take(8);
+
+            foreach (var file in files)
+            {
+                var usage = TryReadLatestTurnUsageFile(file.FullName);
+                if (usage is not null) return usage;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Could not read Codex token usage from session files.");
+        }
+
+        return null;
+    }
+
+    public static CodexTokenUsage? TryParseTurnUsageLine(string line)
+    {
+        try
+        {
+            var node = JsonNode.Parse(line);
+            var info = node?["payload"]?["info"];
+            var usage = info?["last_token_usage"];
+            if (usage is null) return null;
+
+            var inputTokens = TryGetInt(usage["input_tokens"]);
+            var outputTokens = TryGetInt(usage["output_tokens"]);
+            if (inputTokens is null && outputTokens is null) return null;
+
+            var model = TryGetString(info?["model"])
+                        ?? TryGetString(info?["model_slug"])
+                        ?? TryGetString(info?["model_id"]);
+            return new CodexTokenUsage(inputTokens, outputTokens, model);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private CodexUsage? TryReadFile(string path)
     {
         string? lastLine = null;
@@ -101,6 +155,21 @@ public class CodexUsageReader
         return new CodexUsage(ParseWindow(limits["primary"]), ParseWindow(limits["secondary"]), observedAt);
     }
 
+    private static CodexTokenUsage? TryReadLatestTurnUsageFile(string path)
+    {
+        string? lastLine = null;
+
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        while (reader.ReadLine() is { } line)
+        {
+            if (line.Contains("\"last_token_usage\"", StringComparison.Ordinal))
+                lastLine = line;
+        }
+
+        return lastLine is null ? null : TryParseTurnUsageLine(lastLine);
+    }
+
     private static CodexLimitWindow? ParseWindow(JsonNode? window)
     {
         if (window is null) return null;
@@ -109,5 +178,21 @@ public class CodexUsageReader
         var resets = window["resets_at"]?.GetValue<long>();
         if (used is null || minutes is null || resets is null) return null;
         return new CodexLimitWindow(used.Value, minutes.Value, DateTimeOffset.FromUnixTimeSeconds(resets.Value));
+    }
+
+    private static int? TryGetInt(JsonNode? node)
+    {
+        try { return node?.GetValue<int>(); }
+        catch { return null; }
+    }
+
+    private static string? TryGetString(JsonNode? node)
+    {
+        try
+        {
+            var value = node?.GetValue<string>();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+        catch { return null; }
     }
 }

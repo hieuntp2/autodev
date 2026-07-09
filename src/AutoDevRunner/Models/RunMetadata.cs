@@ -46,6 +46,13 @@ public class RunMetadata
 
     public string? Task { get; set; }
 
+    public int? PromptChars { get; set; }
+    public int? PromptEstTokens { get; set; }
+    public int? InputTokens { get; set; }
+    public int? OutputTokens { get; set; }
+    public decimal? CostUsd { get; set; }
+    public string? Model { get; set; }
+
     /// <summary>Why the run failed/paused (if any). Read by the learning loop.</summary>
     public string? Reason { get; set; }
 

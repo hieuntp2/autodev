@@ -35,6 +35,12 @@ public class RunMetadataStoreTests : IDisposable
             Stage = LifecycleStage.Committed.ToString(),
             Risk = RiskLevel.Safe.ToString(),
             StartedAt = new DateTime(2026, 7, 5, 10, 0, 0, DateTimeKind.Utc),
+            PromptChars = 12000,
+            PromptEstTokens = 3000,
+            InputTokens = 1000,
+            OutputTokens = 250,
+            CostUsd = 0.0345m,
+            Model = "claude-sonnet-5",
             Skills = new() { new RunSkillRef("pixel-animation-artist", new[] { "sprite sheet" }) },
             Artifacts = new() { new ArtifactRef("assets/x/x_sheet.png", ArtifactKind.SpriteSheet, "pixel-animation-artist", 123) }
         };
@@ -52,6 +58,12 @@ public class RunMetadataStoreTests : IDisposable
         Assert.Single(read.Artifacts);
         Assert.Equal(ArtifactKind.SpriteSheet, read.Artifacts[0].Kind);
         Assert.Equal("pixel-animation-artist", read.Skills[0].Id);
+        Assert.Equal(12000, read.PromptChars);
+        Assert.Equal(3000, read.PromptEstTokens);
+        Assert.Equal(1000, read.InputTokens);
+        Assert.Equal(250, read.OutputTokens);
+        Assert.Equal(0.0345m, read.CostUsd);
+        Assert.Equal("claude-sonnet-5", read.Model);
     }
 
     [Fact]
