@@ -159,3 +159,8 @@ pre {
 .badge.Failed { background: rgba(248,81,73,.15); color: var(--red); }
 .next-tasks { margin: 0; padding-left: 18px; }
 .next-tasks li { margin: 2px 0; }
+
+/* --- Live run activity --- */
+.live-events { max-height: 520px; border-color: rgba(88,166,255,.45); }
+.live-dot { color: var(--green); font-size: 12px; animation: live-pulse 1.4s ease-in-out infinite; }
+@keyframes live-pulse { 0%,100% { opacity: .35; } 50% { opacity: 1; } }

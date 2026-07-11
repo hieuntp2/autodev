@@ -31,6 +31,12 @@ function toast(msg, isErr) {
 // ---- routing ----
 let current = "overview";
 const views = {};
+let runEventStream = null;
+
+function closeRunEventStream() {
+  if (runEventStream) runEventStream.close();
+  runEventStream = null;
+}
 
 $("#nav").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-view]");
@@ -40,9 +46,44 @@ $("#nav").addEventListener("click", (e) => {
 $("#refresh").addEventListener("click", () => render());
 
 function navigate(view, arg) {
+  closeRunEventStream();
   current = view;
   [...$("#nav").children].forEach(b => b.classList.toggle("active", b.dataset.view === view));
   render(arg);
+}
+
+function startRunEventStream(id) {
+  closeRunEventStream();
+  const output = $("#live-events");
+  if (!output) return;
+
+  const source = new EventSource(`/api/runs/${id}/events`);
+  runEventStream = source;
+  const append = (kind, message, timestamp) => {
+    const time = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+    const lines = output.textContent.split("\n").filter(Boolean);
+    lines.push(`${time} [${kind}] ${message}`);
+    output.textContent = lines.slice(-500).join("\n") + "\n";
+    output.scrollTop = output.scrollHeight;
+  };
+  const handle = (e) => {
+    try {
+      const event = JSON.parse(e.data);
+      append(event.kind || e.type, event.message || "", event.timestamp);
+      if (event.terminal) {
+        closeRunEventStream();
+        setTimeout(() => { if (current === "runDetail") views.runDetail(id); }, 500);
+      }
+    } catch (err) {
+      append("error", "Invalid live event: " + err.message);
+    }
+  };
+  ["lifecycle", "heartbeat", "agent", "command", "file", "tool", "error", "provider-complete", "terminal"]
+    .forEach(kind => source.addEventListener(kind, handle));
+  source.onerror = () => {
+    if (source.readyState === EventSource.CLOSED)
+      append("stream", "Live stream closed.");
+  };
 }
 
 async function render(arg) {
@@ -425,8 +466,10 @@ function runsTable(runs) {
 
 // ---- Run detail ----
 views.runDetail = async (id) => {
+  closeRunEventStream();
   const d = await api(`/runs/${id}`);
   const r = d.run;
+  const isLive = r.status === "Running" || r.status === "Pending";
   app.innerHTML = `
     <div class="toolbar"><h1>Run #${r.id} — ${esc(r.projectName)}</h1><button class="ghost" id="back">← Runs</button></div>
     <div class="detail-grid">
@@ -454,6 +497,8 @@ views.runDetail = async (id) => {
     ${d.prompt ? `<details><summary><strong>Prompt sent to the provider</strong> (${d.prompt.length.toLocaleString()} chars)</summary><pre>${esc(d.prompt)}</pre></details>` : ""}
     <h2>Changed files</h2><pre>${esc(d.changedFiles || "(none)")}</pre>
     ${d.validationOutput ? `<h2>Validation output</h2><pre>${esc(d.validationOutput)}</pre>` : ""}
+    ${isLive ? `<h2>Live activity <span class="live-dot">●</span></h2>
+      <pre id="live-events" class="live-events">Connecting to run stream…\n</pre>` : ""}
     <h2>Log <button class="sm" id="loadlog">Load full log</button></h2>
     <pre id="log" class="muted">Click “Load full log”.</pre>
   `;
@@ -462,6 +507,7 @@ views.runDetail = async (id) => {
     try { const l = await api(`/runs/${id}/log`); $("#log").textContent = l.log; $("#log").classList.remove("muted"); }
     catch (e) { toast(e.message, true); }
   };
+  if (isLive) startRunEventStream(id);
 };
 
 // ---- Providers ----

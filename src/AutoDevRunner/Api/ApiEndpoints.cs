@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AutoDevRunner.Config;
 using AutoDevRunner.Data;
 using AutoDevRunner.Models;
@@ -304,6 +305,52 @@ public static class ApiEndpoints
                 return Results.Ok(new { log = "(log file not found)" });
             var content = await File.ReadAllTextAsync(r.LogPath);
             return Results.Ok(new { log = content });
+        });
+
+        api.MapGet("/runs/{id:int}/events", async (
+            int id, HttpContext context, AppDbContext db, RunEventStore events) =>
+        {
+            var run = await db.Runs.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, context.RequestAborted);
+            if (run is null)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            var repoPath = await db.Projects.AsNoTracking()
+                .Where(p => p.Id == run.ProjectId)
+                .Select(p => p.RepoPath)
+                .FirstOrDefaultAsync(context.RequestAborted);
+            if (string.IsNullOrWhiteSpace(repoPath))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status200OK;
+            context.Response.ContentType = "text/event-stream";
+            context.Response.Headers.CacheControl = "no-cache";
+            context.Response.Headers.Append("X-Accel-Buffering", "no");
+            var after = long.TryParse(context.Request.Headers["Last-Event-ID"], out var requested)
+                ? requested : 0;
+
+            while (!context.RequestAborted.IsCancellationRequested)
+            {
+                var batch = events.ReadAfter(repoPath, id, after);
+                foreach (var item in batch)
+                {
+                    after = item.Sequence;
+                    await context.Response.WriteAsync($"id: {item.Sequence}\n", context.RequestAborted);
+                    await context.Response.WriteAsync($"event: {item.Kind}\n", context.RequestAborted);
+                    await context.Response.WriteAsync(
+                        "data: " + JsonSerializer.Serialize(item, new JsonSerializerOptions(JsonSerializerDefaults.Web)) + "\n\n",
+                        context.RequestAborted);
+                    await context.Response.Body.FlushAsync(context.RequestAborted);
+                    if (item.Terminal) return;
+                }
+
+                if (batch.Count == 0 && run.Status is not (RunStatus.Pending or RunStatus.Running)) return;
+                await Task.Delay(500, context.RequestAborted);
+            }
         });
 
         // ---- Providers ----

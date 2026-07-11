@@ -41,6 +41,7 @@ public class RunOrchestrator
     private readonly RunHistoryService _history;
     private readonly RetrospectiveWriter _retro;
     private readonly CodexUsageReader _codexUsage;
+    private readonly RunEventStore _eventStore;
     private readonly AutoDevOptions _opt;
     private readonly ILogger<RunOrchestrator> _log;
 
@@ -67,6 +68,7 @@ public class RunOrchestrator
     private string? _sessionResult;
     private bool _validationInferred;
     private bool _promptDirectivesUpdated;
+    private RunEventStore.RunEventSink? _liveEvents;
 
     public RunOrchestrator(
         AppDbContext db, GitService git, GuardrailService guard,
@@ -79,6 +81,7 @@ public class RunOrchestrator
         ProjectMemoryWriter memory, PromptDirectivesService promptDirectives,
         RunMetadataStore runMeta, TaskProposer proposer,
         RunHistoryService history, RetrospectiveWriter retro, CodexUsageReader codexUsage,
+        RunEventStore eventStore,
         IOptions<AutoDevOptions> opt, ILogger<RunOrchestrator> log)
     {
         _db = db; _git = git; _guard = guard; _promptBuilder = promptBuilder;
@@ -89,6 +92,7 @@ public class RunOrchestrator
         _promptDirectives = promptDirectives; _runMeta = runMeta;
         _proposer = proposer; _history = history; _retro = retro; _opt = opt.Value; _log = log;
         _codexUsage = codexUsage;
+        _eventStore = eventStore;
     }
 
     public Task<RunRecord?> RunProjectAsync(int projectId, CancellationToken ct = default) =>
@@ -131,6 +135,8 @@ public class RunOrchestrator
         }
         finally
         {
+            _liveEvents?.Dispose();
+            _liveEvents = null;
             if (lease is not null && releaseLeaseOnCompletion)
                 lease.Dispose();
         }
@@ -144,11 +150,14 @@ public class RunOrchestrator
         project.LastRunAt = run.StartedAt;
         project.LastError = null;
         await _db.SaveChangesAsync(ct);
+        _liveEvents = _eventStore.Open(project.RepoPath, run.Id);
+        _liveEvents.Append("lifecycle", $"Run #{run.Id} started for {project.Name}.");
 
         var logBuffer = new StringBuilder();
         void Log(string line)
         {
             logBuffer.AppendLine(line);
+            _liveEvents?.Append(RunEventStore.KindFor(line), line);
             // Mirror to the file log so a live run can be followed with
             // Logging:File:MinLevel=Debug (the buffer is only persisted at the end).
             if (line.StartsWith("still running - last output ", StringComparison.Ordinal))
@@ -967,6 +976,8 @@ public class RunOrchestrator
         var subject = $"[AutoDev] {project.Name} — {status}";
         run.EmailSent = await _email.SendAsync(subject, report, project.Name, status.ToString(), ct);
         await _db.SaveChangesAsync(ct);
+
+        _liveEvents?.Append("terminal", status.ToString(), terminal: true);
 
         _log.LogInformation("Project {Name} run #{Run} finished: {Status}", project.Name, run.Id, status);
     }

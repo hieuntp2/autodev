@@ -56,6 +56,7 @@ builder.Services.AddSingleton<DueProjectsRunner>();
 builder.Services.AddSingleton<ProviderAvailability>();
 builder.Services.AddSingleton<CodexUsageReader>();
 builder.Services.AddSingleton<ContinuousRunner>();
+builder.Services.AddSingleton<RunEventStore>();
 
 // ---- Global skill system ----
 builder.Services.AddSingleton<AutoDevRunner.Skills.SkillRegistry>();
