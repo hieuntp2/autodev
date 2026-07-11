@@ -9,10 +9,19 @@ public record ProcessResult(
     string StdErr,
     bool TimedOut,
     ProcessTimeoutKind? TimeoutKind = null,
-    TimeSpan? TimeoutLimit = null)
+    TimeSpan? TimeoutLimit = null,
+    ProcessTerminalSignal? TerminalSignal = null)
 {
     public string Combined => string.IsNullOrEmpty(StdErr) ? StdOut : $"{StdOut}\n{StdErr}";
 }
+
+public enum ProcessTerminalKind
+{
+    Completed,
+    Failed
+}
+
+public sealed record ProcessTerminalSignal(ProcessTerminalKind Kind, string? Reason = null);
 
 /// <summary>
 /// Thin wrapper around <see cref="Process"/> that captures stdout/stderr,
@@ -29,7 +38,9 @@ public class ProcessRunner
         CancellationToken ct = default,
         string? stdin = null,
         TimeSpan? idleTimeout = null,
-        TimeSpan? heartbeatInterval = null)
+        TimeSpan? heartbeatInterval = null,
+        Func<string, ProcessTerminalSignal?>? terminalDetector = null,
+        TimeSpan? terminalExitGrace = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -53,6 +64,8 @@ public class ProcessRunner
         var startedAt = DateTimeOffset.UtcNow;
         var lastOutputAt = startedAt;
         var outputLock = new object();
+        var terminal = new TaskCompletionSource<ProcessTerminalSignal>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
         process.OutputDataReceived += (_, e) =>
         {
@@ -63,6 +76,8 @@ public class ProcessRunner
                 lastOutputAt = DateTimeOffset.UtcNow;
             }
             onOutput?.Invoke(e.Data);
+            var signal = terminalDetector?.Invoke(e.Data);
+            if (signal is not null) terminal.TrySetResult(signal);
         };
         process.ErrorDataReceived += (_, e) =>
         {
@@ -111,11 +126,29 @@ public class ProcessRunner
             while (true)
             {
                 var delayTask = Task.Delay(TimeSpan.FromSeconds(1), ct);
-                var completed = await Task.WhenAny(waitTask, delayTask);
+                var completed = await Task.WhenAny(waitTask, delayTask, terminal.Task);
                 if (completed == waitTask)
                 {
                     await waitTask;
                     return new ProcessResult(process.ExitCode, stdout.ToString(), stderr.ToString(), TimedOut: false);
+                }
+
+                if (completed == terminal.Task)
+                {
+                    var signal = await terminal.Task;
+                    var grace = terminalExitGrace ?? TimeSpan.FromSeconds(5);
+                    var exited = await Task.WhenAny(waitTask, Task.Delay(grace, ct)) == waitTask;
+                    if (exited) await waitTask;
+                    else
+                    {
+                        TryKill(process);
+                        try { await process.WaitForExitAsync(CancellationToken.None); } catch { }
+                    }
+
+                    var exitCode = signal.Kind == ProcessTerminalKind.Completed ? 0
+                        : process.HasExited && process.ExitCode != 0 ? process.ExitCode : -1;
+                    return new ProcessResult(exitCode, stdout.ToString(), stderr.ToString(), TimedOut: false,
+                        TerminalSignal: signal);
                 }
 
                 var now = DateTimeOffset.UtcNow;
