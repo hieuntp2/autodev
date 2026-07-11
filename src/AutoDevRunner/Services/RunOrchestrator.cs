@@ -780,11 +780,11 @@ public class RunOrchestrator
         Action<string> log, CancellationToken ct)
     {
         log($"--- Validation: {command} ---");
-        var (file, args) = SplitCommand(command);
+        var launch = ValidationCommandLauncher.Resolve(command);
         var environment = ValidationEnvironmentResolver.Resolve(command, _opt.Validation.JavaHome);
         if (environment.TryGetValue("JAVA_HOME", out var javaHome))
             log($"Validation Java home: {javaHome}");
-        var r = await _proc.RunAsync(file, args, project.RepoPath, timeout, log, ct,
+        var r = await _proc.RunAsync(launch.FileName, launch.Arguments, project.RepoPath, timeout, log, ct,
             environment: environment);
         run.ValidationRun = true;
         run.ValidationPassed = r is { ExitCode: 0, TimedOut: false };
@@ -1215,10 +1215,4 @@ public class RunOrchestrator
     private static string Tail(string s, int max) =>
         s.Length <= max ? s : "...\n" + s[^max..];
 
-    private static (string file, string args) SplitCommand(string command)
-    {
-        command = command.Trim();
-        var idx = command.IndexOf(' ');
-        return idx < 0 ? (command, string.Empty) : (command[..idx], command[(idx + 1)..]);
-    }
 }
