@@ -417,7 +417,7 @@ public class RunOrchestrator
             var summary = _summaryParser.Parse(invocation.Output);
             run.Summary = summary.FullText;
             project.LastSummary = summary.FullText;
-            project.CurrentTask = summary.NextTask ?? summary.Pending ?? summary.Task;
+            project.CurrentTask = ResumeTaskPolicy.Resolve(project.CurrentTask, summary);
             _nextSuggestedTasks = SplitTasks(summary.NextSuggestedTasks ?? summary.NextTask);
             await MaybeApplySettingsProposalAsync(project, summary, Log, ct);
 
@@ -954,46 +954,87 @@ public class RunOrchestrator
         if (_memoryUpdates.Count > 0 && _stage < LifecycleStage.Learned)
             _stage = LifecycleStage.Learned;
 
-        // Persist run log + markdown summary to disk, then the machine-readable sidecar.
-        run.LogPath = await WriteRunFilesAsync(project, run, summary, logBuffer.ToString(), ct);
-        if (_stage != LifecycleStage.Failed)
-            _stage = (LifecycleStage)Math.Max((int)_stage, (int)LifecycleStage.Reported);
-        if (status is RunStatus.Failed) _stage = LifecycleStage.Failed;
-        await WriteRunMetadataAsync(project, run, ct);
-
-        // Learning loop: per-run retrospective (what worked/failed, what to try/avoid).
-        if (_opt.Learning.Enabled && !string.IsNullOrWhiteSpace(run.LogPath))
+        // Reports are useful, but must never prevent a terminal run state from being saved.
+        try
         {
-            var changed = string.IsNullOrWhiteSpace(run.ChangedFiles)
-                ? Array.Empty<string>()
-                : run.ChangedFiles!.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var retroPath = await _retro.WriteAsync(run.LogPath!, run, summary, _riskAssessment, changed, _lessons, ct);
-            if (retroPath is not null)
-                logBuffer.AppendLine("Wrote retrospective: " + Path.GetFileName(retroPath));
+            run.LogPath = await WriteRunFilesAsync(project, run, summary, logBuffer.ToString(), ct);
+            if (_stage != LifecycleStage.Failed)
+                _stage = (LifecycleStage)Math.Max((int)_stage, (int)LifecycleStage.Reported);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to write report files for run #{Run}.", run.Id);
+            logBuffer.AppendLine("REPORT WARNING: " + ex.Message);
         }
 
-        // Persist the final lifecycle stage + risk on the run (queryable history).
-        run.Stage = _stage.ToString();
-        run.Risk = _riskAssessment.Level.ToString();
-        await UpdateLearningStateAsync(project, run, ct);
+        if (status is RunStatus.Failed) _stage = LifecycleStage.Failed;
+        RunFinalizationPolicy.ApplyTerminalState(
+            project, run, status, run.FinishedAt ?? DateTime.UtcNow,
+            _stage.ToString(), _riskAssessment.Level.ToString());
+        await WriteRunMetadataAsync(project, run, ct);
 
-        // Update denormalized project snapshot.
-        project.LastRunStatus = status;
-        project.LastProvider = run.Provider;
-        project.LastRunAt = run.FinishedAt;
-        project.LastError = status is RunStatus.Success ? null : run.Reason;
+        // Save the authoritative terminal state before optional learning. A learning/index
+        // failure can then be reported without reverting the completed run to Running.
+        await RunFinalizationPolicy.PersistThenTryOptionalAsync(
+            persistTerminal: async () =>
+            {
+                await _db.SaveChangesAsync(ct);
+                _liveEvents?.Append("terminal", status.ToString(), terminal: true);
+            },
+            optionalWork: async () =>
+            {
+                await UpdateLearningStateAsync(project, run, ct);
+                await _db.SaveChangesAsync(ct);
+            },
+            onOptionalError: ex =>
+            {
+                _log.LogWarning(ex, "Learning update failed after run #{Run} reached {Status}.", run.Id, status);
+                logBuffer.AppendLine("LEARNING WARNING: " + ex.Message);
+                DiscardLearningChanges();
+            });
 
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            if (_opt.Learning.Enabled && !string.IsNullOrWhiteSpace(run.LogPath))
+            {
+                var changed = string.IsNullOrWhiteSpace(run.ChangedFiles)
+                    ? Array.Empty<string>()
+                    : run.ChangedFiles!.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var retroPath = await _retro.WriteAsync(run.LogPath!, run, summary, _riskAssessment, changed, _lessons, ct);
+                if (retroPath is not null)
+                    logBuffer.AppendLine("Wrote retrospective: " + Path.GetFileName(retroPath));
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Retrospective failed after run #{Run} reached {Status}.", run.Id, status);
+        }
 
         // Email report.
-        var report = _email.BuildReport(project, run, summary, MeasurementSummary(), _sessionResult);
-        var subject = $"[AutoDev] {project.Name} — {status}";
-        run.EmailSent = await _email.SendAsync(subject, report, project.Name, status.ToString(), ct);
-        await _db.SaveChangesAsync(ct);
-
-        _liveEvents?.Append("terminal", status.ToString(), terminal: true);
+        try
+        {
+            var report = _email.BuildReport(project, run, summary, MeasurementSummary(), _sessionResult);
+            var subject = $"[AutoDev] {project.Name} — {status}";
+            run.EmailSent = await _email.SendAsync(subject, report, project.Name, status.ToString(), ct);
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Email report failed after run #{Run} reached {Status}.", run.Id, status);
+        }
 
         _log.LogInformation("Project {Name} run #{Run} finished: {Status}", project.Name, run.Id, status);
+    }
+
+    private void DiscardLearningChanges()
+    {
+        foreach (var entry in _db.ChangeTracker.Entries()
+                     .Where(entry => entry.Entity is ProjectLearningState or ProjectTaskStat))
+        {
+            entry.State = entry.State is EntityState.Added
+                ? EntityState.Detached
+                : EntityState.Unchanged;
+        }
     }
 
     private async Task UpdateLearningStateAsync(Project project, RunRecord run, CancellationToken ct)
