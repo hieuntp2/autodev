@@ -68,8 +68,8 @@ public abstract class CliProviderBase : IAiProvider
         try
         {
             result = await _runner.RunAsync(
-                _options.Command, arguments, workingDirectory, timeout, onOutput, ct, stdin,
-                idleTimeout, heartbeatInterval);
+                _options.Command, arguments, workingDirectory, timeout, WrapOutput(onOutput), ct, stdin,
+                idleTimeout, heartbeatInterval, TerminalDetector);
         }
         finally
         {
@@ -82,6 +82,10 @@ public abstract class CliProviderBase : IAiProvider
             ? invocation with { Model = ExtractModel(arguments) }
             : invocation;
     }
+
+    protected virtual Func<string, ProcessTerminalSignal?>? TerminalDetector => null;
+
+    protected virtual Action<string>? WrapOutput(Action<string>? onOutput) => onOutput;
 
     protected virtual ProviderInvocation BuildInvocation(ProcessResult result, TimeSpan timeout)
     {

@@ -81,6 +81,30 @@ public class ProjectLearningUpdaterTests
         Assert.Equal(2, stats[0].Failures);
         Assert.Equal("Failed", stats[0].LastOutcome);
     }
+
+    [Fact]
+    public void Oversized_provider_task_is_bounded_before_it_reaches_the_database_index()
+    {
+        var state = new ProjectLearningState { ProjectId = 4 };
+        var stats = new List<ProjectTaskStat>();
+        var title = "Short task title\n" + new string('x', 15_000);
+        var run = new RunRecord
+        {
+            ProjectId = 4,
+            Status = RunStatus.Paused,
+            TaskTitle = title,
+            FinishedAt = DateTime.UtcNow
+        };
+
+        ProjectLearningUpdater.Apply(state, stats, run,
+            rollingWindowStatuses: new[] { RunStatus.Paused },
+            utcNow: DateTime.UtcNow);
+
+        var stat = Assert.Single(stats);
+        Assert.True(stat.TaskKeyNormalized.Length <= 256);
+        Assert.True(stat.TaskTitle.Length <= 500);
+        Assert.StartsWith("Short task title", stat.TaskTitle);
+    }
 }
 
 public class RunHistoryDbLearningTests : IDisposable

@@ -75,6 +75,7 @@ public class ValidationOptions
 {
     public bool InferWhenMissing { get; set; } = true;
     public int MaxRepairAttempts { get; set; } = 2;
+    public string JavaHome { get; set; } = string.Empty;
 }
 
 /// <summary>

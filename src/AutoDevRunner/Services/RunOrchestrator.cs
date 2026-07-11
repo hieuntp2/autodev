@@ -41,6 +41,7 @@ public class RunOrchestrator
     private readonly RunHistoryService _history;
     private readonly RetrospectiveWriter _retro;
     private readonly CodexUsageReader _codexUsage;
+    private readonly RunEventStore _eventStore;
     private readonly AutoDevOptions _opt;
     private readonly ILogger<RunOrchestrator> _log;
 
@@ -67,6 +68,8 @@ public class RunOrchestrator
     private string? _sessionResult;
     private bool _validationInferred;
     private bool _promptDirectivesUpdated;
+    private RunEventStore.RunEventSink? _liveEvents;
+    private string? _startingHead;
 
     public RunOrchestrator(
         AppDbContext db, GitService git, GuardrailService guard,
@@ -79,6 +82,7 @@ public class RunOrchestrator
         ProjectMemoryWriter memory, PromptDirectivesService promptDirectives,
         RunMetadataStore runMeta, TaskProposer proposer,
         RunHistoryService history, RetrospectiveWriter retro, CodexUsageReader codexUsage,
+        RunEventStore eventStore,
         IOptions<AutoDevOptions> opt, ILogger<RunOrchestrator> log)
     {
         _db = db; _git = git; _guard = guard; _promptBuilder = promptBuilder;
@@ -89,6 +93,7 @@ public class RunOrchestrator
         _promptDirectives = promptDirectives; _runMeta = runMeta;
         _proposer = proposer; _history = history; _retro = retro; _opt = opt.Value; _log = log;
         _codexUsage = codexUsage;
+        _eventStore = eventStore;
     }
 
     public Task<RunRecord?> RunProjectAsync(int projectId, CancellationToken ct = default) =>
@@ -131,6 +136,8 @@ public class RunOrchestrator
         }
         finally
         {
+            _liveEvents?.Dispose();
+            _liveEvents = null;
             if (lease is not null && releaseLeaseOnCompletion)
                 lease.Dispose();
         }
@@ -140,12 +147,18 @@ public class RunOrchestrator
     {
         var run = new RunRecord { ProjectId = project.Id, Status = RunStatus.Running };
         _db.Runs.Add(run);
+        project.LastRunStatus = RunStatus.Running;
+        project.LastRunAt = run.StartedAt;
+        project.LastError = null;
         await _db.SaveChangesAsync(ct);
+        _liveEvents = _eventStore.Open(project.RepoPath, run.Id);
+        _liveEvents.Append("lifecycle", $"Run #{run.Id} started for {project.Name}.");
 
         var logBuffer = new StringBuilder();
         void Log(string line)
         {
             logBuffer.AppendLine(line);
+            _liveEvents?.Append(RunEventStore.KindFor(line), line);
             // Mirror to the file log so a live run can be followed with
             // Logging:File:MinLevel=Debug (the buffer is only persisted at the end).
             if (line.StartsWith("still running - last output ", StringComparison.Ordinal))
@@ -174,6 +187,7 @@ public class RunOrchestrator
             }
             run.Branch = branch;
             project.CurrentBranch = branch;
+            _startingHead = await _git.GetHeadShaAsync(project.RepoPath, ct);
 
             // 3. Load brief + project goal layer (.ai-runner/PROJECT_GOAL.md etc.).
             var brief = await LoadBriefAsync(project, ct);
@@ -403,7 +417,7 @@ public class RunOrchestrator
             var summary = _summaryParser.Parse(invocation.Output);
             run.Summary = summary.FullText;
             project.LastSummary = summary.FullText;
-            project.CurrentTask = summary.NextTask ?? summary.Pending ?? summary.Task;
+            project.CurrentTask = ResumeTaskPolicy.Resolve(project.CurrentTask, summary);
             _nextSuggestedTasks = SplitTasks(summary.NextSuggestedTasks ?? summary.NextTask);
             await MaybeApplySettingsProposalAsync(project, summary, Log, ct);
 
@@ -428,7 +442,7 @@ public class RunOrchestrator
 
             // 8. Record changed files (+ status for risk) and track generated artifacts.
             //    Merge git-detected artifacts with the paths the AI declared.
-            var changes = await _git.GetChangesAsync(project.RepoPath, ct);
+            var changes = await GetRunChangesAsync(project, run, ct);
             var changed = changes.Select(c => c.Path).ToList();
             run.ChangedFiles = string.Join('\n', changed);
             var gitArtifacts = _artifacts.Track(changed, project.RepoPath);
@@ -486,7 +500,7 @@ public class RunOrchestrator
 
             if (_repairAttempts is > 0)
             {
-                changes = await _git.GetChangesAsync(project.RepoPath, ct);
+                changes = await GetRunChangesAsync(project, run, ct);
                 changed = changes.Select(c => c.Path).ToList();
                 run.ChangedFiles = string.Join('\n', changed);
                 var repairArtifacts = _artifacts.Track(changed, project.RepoPath);
@@ -767,7 +781,11 @@ public class RunOrchestrator
     {
         log($"--- Validation: {command} ---");
         var (file, args) = SplitCommand(command);
-        var r = await _proc.RunAsync(file, args, project.RepoPath, timeout, log, ct);
+        var environment = ValidationEnvironmentResolver.Resolve(command, _opt.Validation.JavaHome);
+        if (environment.TryGetValue("JAVA_HOME", out var javaHome))
+            log($"Validation Java home: {javaHome}");
+        var r = await _proc.RunAsync(file, args, project.RepoPath, timeout, log, ct,
+            environment: environment);
         run.ValidationRun = true;
         run.ValidationPassed = r is { ExitCode: 0, TimedOut: false };
         run.ValidationOutput = r.Combined;
@@ -807,7 +825,7 @@ public class RunOrchestrator
                 break;
             }
 
-            currentChanged = (await _git.GetChangesAsync(project.RepoPath, ct)).Select(c => c.Path).ToList();
+            currentChanged = (await GetRunChangesAsync(project, run, ct)).Select(c => c.Path).ToList();
             await RunValidationAsync(project, run, _validationCommand!, timeout, log, ct);
         }
     }
@@ -865,12 +883,24 @@ public class RunOrchestrator
         return (false, false, string.Empty);
     }
 
+    private async Task<List<GitChange>> GetRunChangesAsync(
+        Project project, RunRecord run, CancellationToken ct)
+    {
+        var snapshot = await _git.GetRunChangesAsync(project.RepoPath, _startingHead, ct);
+        if (snapshot.ProviderCommitted && !string.IsNullOrWhiteSpace(snapshot.CurrentHead))
+        {
+            run.CommitSha ??= snapshot.CurrentHead;
+            _liveEvents?.Append("git", $"Provider changed HEAD to {snapshot.CurrentHead}.");
+        }
+        return snapshot.Changes.ToList();
+    }
+
     private async Task PauseAsync(Project project, RunRecord run, RunStatus status,
         ProviderInvocation inv, StringBuilder logBuffer, CancellationToken ct)
     {
         run.Reason = inv.Reason ?? status.ToString();
         // Capture any partial progress (changed files, artifacts, risk).
-        var changes = await _git.GetChangesAsync(project.RepoPath, ct);
+        var changes = await GetRunChangesAsync(project, run, ct);
         var changed = changes.Select(c => c.Path).ToList();
         run.ChangedFiles = string.Join('\n', changed);
         _trackedArtifacts = _artifacts.Track(changed, project.RepoPath);
@@ -924,44 +954,87 @@ public class RunOrchestrator
         if (_memoryUpdates.Count > 0 && _stage < LifecycleStage.Learned)
             _stage = LifecycleStage.Learned;
 
-        // Persist run log + markdown summary to disk, then the machine-readable sidecar.
-        run.LogPath = await WriteRunFilesAsync(project, run, summary, logBuffer.ToString(), ct);
-        if (_stage != LifecycleStage.Failed)
-            _stage = (LifecycleStage)Math.Max((int)_stage, (int)LifecycleStage.Reported);
-        if (status is RunStatus.Failed) _stage = LifecycleStage.Failed;
-        await WriteRunMetadataAsync(project, run, ct);
-
-        // Learning loop: per-run retrospective (what worked/failed, what to try/avoid).
-        if (_opt.Learning.Enabled && !string.IsNullOrWhiteSpace(run.LogPath))
+        // Reports are useful, but must never prevent a terminal run state from being saved.
+        try
         {
-            var changed = string.IsNullOrWhiteSpace(run.ChangedFiles)
-                ? Array.Empty<string>()
-                : run.ChangedFiles!.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var retroPath = await _retro.WriteAsync(run.LogPath!, run, summary, _riskAssessment, changed, _lessons, ct);
-            if (retroPath is not null)
-                logBuffer.AppendLine("Wrote retrospective: " + Path.GetFileName(retroPath));
+            run.LogPath = await WriteRunFilesAsync(project, run, summary, logBuffer.ToString(), ct);
+            if (_stage != LifecycleStage.Failed)
+                _stage = (LifecycleStage)Math.Max((int)_stage, (int)LifecycleStage.Reported);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to write report files for run #{Run}.", run.Id);
+            logBuffer.AppendLine("REPORT WARNING: " + ex.Message);
         }
 
-        // Persist the final lifecycle stage + risk on the run (queryable history).
-        run.Stage = _stage.ToString();
-        run.Risk = _riskAssessment.Level.ToString();
-        await UpdateLearningStateAsync(project, run, ct);
+        if (status is RunStatus.Failed) _stage = LifecycleStage.Failed;
+        RunFinalizationPolicy.ApplyTerminalState(
+            project, run, status, run.FinishedAt ?? DateTime.UtcNow,
+            _stage.ToString(), _riskAssessment.Level.ToString());
+        await WriteRunMetadataAsync(project, run, ct);
 
-        // Update denormalized project snapshot.
-        project.LastRunStatus = status;
-        project.LastProvider = run.Provider;
-        project.LastRunAt = run.FinishedAt;
-        project.LastError = status is RunStatus.Success ? null : run.Reason;
+        // Save the authoritative terminal state before optional learning. A learning/index
+        // failure can then be reported without reverting the completed run to Running.
+        await RunFinalizationPolicy.PersistThenTryOptionalAsync(
+            persistTerminal: async () =>
+            {
+                await _db.SaveChangesAsync(ct);
+                _liveEvents?.Append("terminal", status.ToString(), terminal: true);
+            },
+            optionalWork: async () =>
+            {
+                await UpdateLearningStateAsync(project, run, ct);
+                await _db.SaveChangesAsync(ct);
+            },
+            onOptionalError: ex =>
+            {
+                _log.LogWarning(ex, "Learning update failed after run #{Run} reached {Status}.", run.Id, status);
+                logBuffer.AppendLine("LEARNING WARNING: " + ex.Message);
+                DiscardLearningChanges();
+            });
 
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            if (_opt.Learning.Enabled && !string.IsNullOrWhiteSpace(run.LogPath))
+            {
+                var changed = string.IsNullOrWhiteSpace(run.ChangedFiles)
+                    ? Array.Empty<string>()
+                    : run.ChangedFiles!.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var retroPath = await _retro.WriteAsync(run.LogPath!, run, summary, _riskAssessment, changed, _lessons, ct);
+                if (retroPath is not null)
+                    logBuffer.AppendLine("Wrote retrospective: " + Path.GetFileName(retroPath));
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Retrospective failed after run #{Run} reached {Status}.", run.Id, status);
+        }
 
         // Email report.
-        var report = _email.BuildReport(project, run, summary, MeasurementSummary(), _sessionResult);
-        var subject = $"[AutoDev] {project.Name} — {status}";
-        run.EmailSent = await _email.SendAsync(subject, report, project.Name, status.ToString(), ct);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            var report = _email.BuildReport(project, run, summary, MeasurementSummary(), _sessionResult);
+            var subject = $"[AutoDev] {project.Name} — {status}";
+            run.EmailSent = await _email.SendAsync(subject, report, project.Name, status.ToString(), ct);
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Email report failed after run #{Run} reached {Status}.", run.Id, status);
+        }
 
         _log.LogInformation("Project {Name} run #{Run} finished: {Status}", project.Name, run.Id, status);
+    }
+
+    private void DiscardLearningChanges()
+    {
+        foreach (var entry in _db.ChangeTracker.Entries()
+                     .Where(entry => entry.Entity is ProjectLearningState or ProjectTaskStat))
+        {
+            entry.State = entry.State is EntityState.Added
+                ? EntityState.Detached
+                : EntityState.Unchanged;
+        }
     }
 
     private async Task UpdateLearningStateAsync(Project project, RunRecord run, CancellationToken ct)

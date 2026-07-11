@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 using AutoDevRunner.Models;
 
@@ -64,7 +65,7 @@ public class RunLock
                 var now = DateTimeOffset.UtcNow;
                 var created = new RunLockLease(
                     this, project.Id, project.RepoPath, lockPath, Guid.NewGuid().ToString("N"),
-                    Environment.ProcessId, now, stream);
+                    Environment.ProcessId, CurrentProcessStartedAtUtc(), now, stream);
                 created.Renew(LeaseDurationFor(project));
 
                 if (_active.TryAdd(project.Id, created))
@@ -109,6 +110,39 @@ public class RunLock
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Removes a lock left by a process that no longer exists. A live PID with a
+    /// matching process start time is never removed, even when another runner starts.
+    /// </summary>
+    public bool TryRecoverDeadOwner(Project project, out string? reason)
+    {
+        reason = null;
+        var lockPath = LockPathFor(project.RepoPath);
+        if (!File.Exists(lockPath))
+        {
+            reason = "No lock file exists.";
+            return false;
+        }
+        if (!TryRead(lockPath, out var info))
+        {
+            reason = $"Project lock exists but could not be read: {lockPath}";
+            return false;
+        }
+        if (OwnerIsAlive(info!))
+        {
+            reason = $"Lock owner pid {info!.ProcessId} is still alive.";
+            return false;
+        }
+        if (TryDelete(lockPath))
+        {
+            reason = $"Recovered lock from dead owner pid {info!.ProcessId}.";
+            return true;
+        }
+
+        reason = $"Lock owner pid {info!.ProcessId} is dead, but the lock could not be removed.";
+        return false;
     }
 
     /// <summary>In-process view retained for callers that do not have a Project.</summary>
@@ -207,6 +241,7 @@ public class RunLock
             ProjectId = lease.ProjectId,
             Token = lease.Token,
             ProcessId = lease.ProcessId,
+            ProcessStartedAtUtc = lease.ProcessStartedAtUtc,
             StartedAtUtc = lease.StartedAtUtc,
             ExpiresAtUtc = lease.ExpiresAtUtc
         }, JsonOpts);
@@ -218,8 +253,32 @@ public class RunLock
         public int ProjectId { get; set; }
         public string Token { get; set; } = string.Empty;
         public int ProcessId { get; set; }
+        public DateTimeOffset? ProcessStartedAtUtc { get; set; }
         public DateTimeOffset StartedAtUtc { get; set; }
         public DateTimeOffset ExpiresAtUtc { get; set; }
+    }
+
+    private static DateTimeOffset CurrentProcessStartedAtUtc()
+    {
+        try { return Process.GetCurrentProcess().StartTime.ToUniversalTime(); }
+        catch { return DateTimeOffset.UtcNow; }
+    }
+
+    private static bool OwnerIsAlive(LockFile info)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(info.ProcessId);
+            if (process.HasExited) return false;
+            if (info.ProcessStartedAtUtc is null) return true;
+
+            var actual = new DateTimeOffset(process.StartTime.ToUniversalTime());
+            return (actual - info.ProcessStartedAtUtc.Value).Duration() < TimeSpan.FromSeconds(2);
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
 
@@ -231,7 +290,8 @@ public sealed class RunLockLease : IDisposable
     private bool _disposed;
 
     internal RunLockLease(RunLock owner, int projectId, string repoPath, string lockPath,
-        string token, int processId, DateTimeOffset startedAtUtc, FileStream stream)
+        string token, int processId, DateTimeOffset processStartedAtUtc,
+        DateTimeOffset startedAtUtc, FileStream stream)
     {
         _owner = owner;
         ProjectId = projectId;
@@ -239,6 +299,7 @@ public sealed class RunLockLease : IDisposable
         LockPath = lockPath;
         Token = token;
         ProcessId = processId;
+        ProcessStartedAtUtc = processStartedAtUtc;
         StartedAtUtc = startedAtUtc;
         _stream = stream;
     }
@@ -248,6 +309,7 @@ public sealed class RunLockLease : IDisposable
     public string LockPath { get; }
     public string Token { get; }
     public int ProcessId { get; }
+    public DateTimeOffset ProcessStartedAtUtc { get; }
     public DateTimeOffset StartedAtUtc { get; }
     public DateTimeOffset ExpiresAtUtc { get; private set; }
     public bool IsDisposed { get; private set; }

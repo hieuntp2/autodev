@@ -18,5 +18,7 @@ public class GuardrailPromptTests
         Assert.Contains("Deletions inside the project are permitted", prompt);
         Assert.DoesNotContain("Do NOT delete files", prompt);
         Assert.Contains("Do NOT touch, create, or delete anything outside it", prompt);
+        Assert.Contains("Do NOT commit", prompt);
+        Assert.Contains("runner handles commit", prompt, StringComparison.OrdinalIgnoreCase);
     }
 }
