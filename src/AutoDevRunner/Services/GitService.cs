@@ -9,6 +9,12 @@ public record GitChange(string Status, string Path)
     public bool IsDelete => Status.Contains('D');
 }
 
+public record GitRunSnapshot(
+    IReadOnlyList<GitChange> Changes,
+    string? StartingHead,
+    string? CurrentHead,
+    bool ProviderCommitted);
+
 /// <summary>Safe git operations via the git CLI. Never runs destructive commands.</summary>
 public class GitService
 {
@@ -31,6 +37,12 @@ public class GitService
     {
         var r = await GitAsync(repo, "rev-parse --abbrev-ref HEAD", ct);
         return r.StdOut.Trim();
+    }
+
+    public async Task<string?> GetHeadShaAsync(string repo, CancellationToken ct = default)
+    {
+        var r = await GitAsync(repo, "rev-parse HEAD", ct);
+        return r.ExitCode == 0 ? r.StdOut.Trim() : null;
     }
 
     public static bool IsProtectedBranch(string branch) =>
@@ -83,6 +95,42 @@ public class GitService
             if (path.Length > 0) changes.Add(new GitChange(status, path));
         }
         return changes;
+    }
+
+    /// <summary>Returns uncommitted changes plus files committed by the provider since run start.</summary>
+    public async Task<GitRunSnapshot> GetRunChangesAsync(
+        string repo, string? startingHead, CancellationToken ct = default)
+    {
+        var working = await GetChangesAsync(repo, ct);
+        var currentHead = await GetHeadShaAsync(repo, ct);
+        var providerCommitted = !string.IsNullOrWhiteSpace(startingHead)
+                                && !string.IsNullOrWhiteSpace(currentHead)
+                                && !string.Equals(startingHead, currentHead, StringComparison.OrdinalIgnoreCase);
+        var merged = new Dictionary<string, GitChange>(StringComparer.OrdinalIgnoreCase);
+
+        if (providerCommitted)
+        {
+            var committed = await GitAsync(repo, $"diff --name-status \"{startingHead}\"..HEAD", ct);
+            if (committed.ExitCode == 0)
+                foreach (var change in ParseNameStatus(committed.StdOut)) merged[change.Path] = change;
+        }
+        foreach (var change in working) merged[change.Path] = change;
+
+        return new GitRunSnapshot(merged.Values.ToList(), startingHead, currentHead, providerCommitted);
+    }
+
+    internal static IReadOnlyList<GitChange> ParseNameStatus(string output)
+    {
+        var result = new List<GitChange>();
+        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = line.TrimEnd('\r').Split('\t');
+            if (parts.Length < 2) continue;
+            var status = parts[0];
+            var path = status.StartsWith('R') || status.StartsWith('C') ? parts[^1] : parts[1];
+            if (!string.IsNullOrWhiteSpace(path)) result.Add(new GitChange(status, path.Trim('"')));
+        }
+        return result;
     }
 
     /// <summary>Stage everything and commit. Returns the new commit SHA, or null on failure.</summary>

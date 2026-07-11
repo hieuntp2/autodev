@@ -40,8 +40,8 @@ public class GuardrailService
 $@"## Hard safety rules (must follow)
 - Do NOT modify secret files: .env, credentials, *.pem, *.key, private keys, keystores.
 - Do NOT run destructive commands: no `rm -rf` of the project, no disk formatting, no `git reset --hard`, no force push.
-{deletionRule}{scopeRule}- {(allowMain ? "You may commit on the current branch." : "Do NOT switch to or commit on main/master; work only on the AI branch already checked out for you.")}
-- Do NOT push to remote.{(autoPush ? " (The runner handles pushing if configured.)" : string.Empty)}
+{deletionRule}{scopeRule}- {(allowMain ? "Stay on the current branch." : "Do NOT switch to main/master; work only on the AI branch already checked out for you.")}
+- Do NOT commit or push. The runner handles commit and push after guardrails and validation.{(autoPush ? " Auto-push is enabled for the runner." : string.Empty)}
 - Make focused, incremental changes. Leave the repo in a buildable state.";
     }
 

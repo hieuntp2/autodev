@@ -69,6 +69,7 @@ public class RunOrchestrator
     private bool _validationInferred;
     private bool _promptDirectivesUpdated;
     private RunEventStore.RunEventSink? _liveEvents;
+    private string? _startingHead;
 
     public RunOrchestrator(
         AppDbContext db, GitService git, GuardrailService guard,
@@ -186,6 +187,7 @@ public class RunOrchestrator
             }
             run.Branch = branch;
             project.CurrentBranch = branch;
+            _startingHead = await _git.GetHeadShaAsync(project.RepoPath, ct);
 
             // 3. Load brief + project goal layer (.ai-runner/PROJECT_GOAL.md etc.).
             var brief = await LoadBriefAsync(project, ct);
@@ -440,7 +442,7 @@ public class RunOrchestrator
 
             // 8. Record changed files (+ status for risk) and track generated artifacts.
             //    Merge git-detected artifacts with the paths the AI declared.
-            var changes = await _git.GetChangesAsync(project.RepoPath, ct);
+            var changes = await GetRunChangesAsync(project, run, ct);
             var changed = changes.Select(c => c.Path).ToList();
             run.ChangedFiles = string.Join('\n', changed);
             var gitArtifacts = _artifacts.Track(changed, project.RepoPath);
@@ -498,7 +500,7 @@ public class RunOrchestrator
 
             if (_repairAttempts is > 0)
             {
-                changes = await _git.GetChangesAsync(project.RepoPath, ct);
+                changes = await GetRunChangesAsync(project, run, ct);
                 changed = changes.Select(c => c.Path).ToList();
                 run.ChangedFiles = string.Join('\n', changed);
                 var repairArtifacts = _artifacts.Track(changed, project.RepoPath);
@@ -823,7 +825,7 @@ public class RunOrchestrator
                 break;
             }
 
-            currentChanged = (await _git.GetChangesAsync(project.RepoPath, ct)).Select(c => c.Path).ToList();
+            currentChanged = (await GetRunChangesAsync(project, run, ct)).Select(c => c.Path).ToList();
             await RunValidationAsync(project, run, _validationCommand!, timeout, log, ct);
         }
     }
@@ -881,12 +883,24 @@ public class RunOrchestrator
         return (false, false, string.Empty);
     }
 
+    private async Task<List<GitChange>> GetRunChangesAsync(
+        Project project, RunRecord run, CancellationToken ct)
+    {
+        var snapshot = await _git.GetRunChangesAsync(project.RepoPath, _startingHead, ct);
+        if (snapshot.ProviderCommitted && !string.IsNullOrWhiteSpace(snapshot.CurrentHead))
+        {
+            run.CommitSha ??= snapshot.CurrentHead;
+            _liveEvents?.Append("git", $"Provider changed HEAD to {snapshot.CurrentHead}.");
+        }
+        return snapshot.Changes.ToList();
+    }
+
     private async Task PauseAsync(Project project, RunRecord run, RunStatus status,
         ProviderInvocation inv, StringBuilder logBuffer, CancellationToken ct)
     {
         run.Reason = inv.Reason ?? status.ToString();
         // Capture any partial progress (changed files, artifacts, risk).
-        var changes = await _git.GetChangesAsync(project.RepoPath, ct);
+        var changes = await GetRunChangesAsync(project, run, ct);
         var changed = changes.Select(c => c.Path).ToList();
         run.ChangedFiles = string.Join('\n', changed);
         _trackedArtifacts = _artifacts.Track(changed, project.RepoPath);
