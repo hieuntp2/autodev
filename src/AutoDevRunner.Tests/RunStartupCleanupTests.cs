@@ -77,4 +77,35 @@ public class RunStartupCleanupTests
         Assert.Equal("Re-run Gradle validation and commit the slice.", project.CurrentTask);
         Assert.True(project.CurrentTask!.Length <= 500);
     }
+
+    [Fact]
+    public void Latest_run_replaces_a_stale_project_snapshot_after_restart()
+    {
+        var finishedAt = new DateTime(2026, 7, 11, 5, 23, 37, DateTimeKind.Utc);
+        var project = new Project
+        {
+            Id = 7,
+            LastRunStatus = RunStatus.Paused,
+            LastError = "Run exceeded the 60 minute limit.",
+            LastProvider = ProviderKind.Claude
+        };
+        var latest = new RunRecord
+        {
+            Id = 123,
+            ProjectId = 7,
+            Provider = ProviderKind.Codex,
+            Status = RunStatus.Paused,
+            FinishedAt = finishedAt,
+            Reason = RunStartupCleanup.OrphanedReason
+        };
+
+        var changed = RunStartupCleanup.ReconcileLatestRunSnapshots(
+            new[] { project }, new[] { latest });
+
+        Assert.Equal(1, changed);
+        Assert.Equal(RunStatus.Paused, project.LastRunStatus);
+        Assert.Equal(ProviderKind.Codex, project.LastProvider);
+        Assert.Equal(finishedAt, project.LastRunAt);
+        Assert.Equal(RunStartupCleanup.OrphanedReason, project.LastError);
+    }
 }

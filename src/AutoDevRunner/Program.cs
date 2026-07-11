@@ -102,25 +102,27 @@ using (var scope = app.Services.CreateScope())
         .ToListAsync();
     var cleanedRuns = RunStartupCleanup.MarkOrphanedRuns(orphaned, reconciledAt);
 
-    var affectedProjectIds = orphaned.Select(r => r.ProjectId).Distinct().ToList();
-    var affectedProjects = await db.Projects
-        .Where(p => affectedProjectIds.Contains(p.Id)
-                    || p.LastRunStatus == RunStatus.Running
-                    || p.LastRunStatus == RunStatus.Pending
-                    || (p.CurrentTask != null && p.CurrentTask.Length > 500))
+    var projects = await db.Projects.ToListAsync();
+    var cleanedProjects = RunStartupCleanup.ReconcileOrphanedProjects(projects, reconciledAt);
+    var sanitizedTasks = RunStartupCleanup.SanitizeResumeTasks(projects);
+    var latestRunIds = await db.Runs
+        .GroupBy(run => run.ProjectId)
+        .Select(group => group.Max(run => run.Id))
         .ToListAsync();
-    var cleanedProjects = RunStartupCleanup.ReconcileOrphanedProjects(affectedProjects, reconciledAt);
-    var sanitizedTasks = RunStartupCleanup.SanitizeResumeTasks(affectedProjects);
+    var latestRuns = await db.Runs.Where(run => latestRunIds.Contains(run.Id)).ToListAsync();
+    var reconciledSnapshots = RunStartupCleanup.ReconcileLatestRunSnapshots(projects, latestRuns);
     var runLock = scope.ServiceProvider.GetRequiredService<RunLock>();
-    var recoveredLocks = affectedProjects.Count(project => runLock.TryRecoverDeadOwner(project, out _));
+    var recoveredLocks = projects.Count(project => runLock.TryRecoverDeadOwner(project, out _));
 
-    if (cleanedRuns > 0 || cleanedProjects > 0 || sanitizedTasks > 0 || recoveredLocks > 0)
+    if (cleanedRuns > 0 || cleanedProjects > 0 || reconciledSnapshots > 0
+        || sanitizedTasks > 0 || recoveredLocks > 0)
     {
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
         logger.LogWarning(
-            "Restart recovery: {Runs} run(s) paused, {Projects} project snapshot(s) reconciled, " +
+            "Restart recovery: {Runs} run(s) paused, {Projects} orphaned project(s) reconciled, " +
+            "{Snapshots} latest snapshot(s) refreshed, " +
             "{Tasks} oversized task(s) sanitized, {Locks} dead lock(s) removed.",
-            cleanedRuns, cleanedProjects, sanitizedTasks, recoveredLocks);
+            cleanedRuns, cleanedProjects, reconciledSnapshots, sanitizedTasks, recoveredLocks);
     }
 
     foreach (var kind in Enum.GetValues<ProviderKind>())

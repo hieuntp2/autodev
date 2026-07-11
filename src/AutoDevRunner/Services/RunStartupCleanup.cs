@@ -59,4 +59,37 @@ public static class RunStartupCleanup
         }
         return count;
     }
+
+    public static int ReconcileLatestRunSnapshots(
+        IEnumerable<Project> projects,
+        IEnumerable<RunRecord> latestRuns)
+    {
+        var latestByProject = latestRuns
+            .GroupBy(run => run.ProjectId)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(run => run.Id).First());
+        var count = 0;
+
+        foreach (var project in projects)
+        {
+            if (!latestByProject.TryGetValue(project.Id, out var latest)) continue;
+
+            var lastRunAt = latest.FinishedAt ?? latest.StartedAt;
+            var lastError = latest.Status is RunStatus.Success ? null : latest.Reason;
+            if (project.LastRunStatus == latest.Status
+                && project.LastProvider == latest.Provider
+                && project.LastRunAt == lastRunAt
+                && project.LastError == lastError)
+            {
+                continue;
+            }
+
+            project.LastRunStatus = latest.Status;
+            project.LastProvider = latest.Provider;
+            project.LastRunAt = lastRunAt;
+            project.LastError = lastError;
+            count++;
+        }
+
+        return count;
+    }
 }
