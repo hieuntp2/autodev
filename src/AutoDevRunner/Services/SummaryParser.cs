@@ -38,10 +38,12 @@ public class SummaryParser
     public ParsedSummary Parse(string output)
     {
         var idx = output.LastIndexOf(PromptBuilder.SummaryMarker, StringComparison.Ordinal);
+        var hasMarker = idx >= 0;
         var block = idx >= 0 ? output[(idx + PromptBuilder.SummaryMarker.Length)..].Trim() : output.Trim();
 
         string? Field(string key)
         {
+            if (!hasMarker) return null;
             // Capture from "KEY:" up to the next "KEY:" line or end of block.
             var m = Regex.Match(block,
                 $@"^{key}:\s*(?<v>.*?)(?=^\w[\w ]*:\s|\z)",

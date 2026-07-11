@@ -32,10 +32,12 @@ public static class ProjectLearningUpdater
             : rollingWindowStatuses.Count(s => s is RunStatus.Success) / (double)rollingCount;
         state.UpdatedAt = utcNow;
 
-        var title = (run.TaskTitle ?? string.Empty).Trim();
-        if (title.Length == 0) return;
+        var rawTitle = (run.TaskTitle ?? string.Empty).Trim();
+        if (rawTitle.Length == 0) return;
 
-        var key = RunLessons.Norm(title);
+        var title = rawTitle.Length <= 500 ? rawTitle : rawTitle[..500];
+        var normalized = RunLessons.Norm(rawTitle);
+        var key = normalized.Length <= 256 ? normalized : normalized[..256];
         var stat = taskStats.FirstOrDefault(s => s.TaskKeyNormalized == key);
         if (stat is null)
         {

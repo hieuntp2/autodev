@@ -57,6 +57,21 @@ public class SummaryParserV2Tests
         Assert.Equal("PASS", s.ValidationResult);              // alias of VALIDATION
         Assert.Equal("hop", s.NextSuggestedTasks);             // alias of NEXT_ANIMATIONS
     }
+
+    [Fact]
+    public void Output_without_marker_is_retained_but_cannot_populate_structured_fields()
+    {
+        var output = "TASK: valid-looking first line\n" +
+                     new string('x', 15_000) + "\nNEXT_TASK: poisoned follow-up";
+
+        var s = _parser.Parse(output);
+
+        Assert.Null(s.Task);
+        Assert.Null(s.TaskTitle);
+        Assert.Null(s.NextTask);
+        Assert.Contains("TASK: valid-looking", s.FullText);
+        Assert.True(s.FullText.Length <= 4_020);
+    }
 }
 
 public class TaskProposerTests
