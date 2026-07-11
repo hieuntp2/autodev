@@ -770,7 +770,11 @@ public class RunOrchestrator
     {
         log($"--- Validation: {command} ---");
         var (file, args) = SplitCommand(command);
-        var r = await _proc.RunAsync(file, args, project.RepoPath, timeout, log, ct);
+        var environment = ValidationEnvironmentResolver.Resolve(command, _opt.Validation.JavaHome);
+        if (environment.TryGetValue("JAVA_HOME", out var javaHome))
+            log($"Validation Java home: {javaHome}");
+        var r = await _proc.RunAsync(file, args, project.RepoPath, timeout, log, ct,
+            environment: environment);
         run.ValidationRun = true;
         run.ValidationPassed = r is { ExitCode: 0, TimedOut: false };
         run.ValidationOutput = r.Combined;

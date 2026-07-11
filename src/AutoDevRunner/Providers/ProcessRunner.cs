@@ -40,7 +40,8 @@ public class ProcessRunner
         TimeSpan? idleTimeout = null,
         TimeSpan? heartbeatInterval = null,
         Func<string, ProcessTerminalSignal?>? terminalDetector = null,
-        TimeSpan? terminalExitGrace = null)
+        TimeSpan? terminalExitGrace = null,
+        IReadOnlyDictionary<string, string?>? environment = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -57,6 +58,14 @@ public class ProcessRunner
         };
         if (stdin is not null)
             psi.StandardInputEncoding = Encoding.UTF8;
+        if (environment is not null)
+        {
+            foreach (var (key, value) in environment)
+            {
+                if (value is null) psi.Environment.Remove(key);
+                else psi.Environment[key] = value;
+            }
+        }
 
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var stdout = new StringBuilder();
