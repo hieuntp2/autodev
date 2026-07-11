@@ -95,14 +95,31 @@ using (var scope = app.Services.CreateScope())
 
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
+    var reconciledAt = DateTime.UtcNow;
     var orphaned = await db.Runs
         .Where(r => (r.Status == RunStatus.Running || r.Status == RunStatus.Pending) && r.FinishedAt == null)
         .ToListAsync();
-    var cleaned = RunStartupCleanup.MarkOrphanedRuns(orphaned, DateTime.UtcNow);
-    if (cleaned > 0)
+    var cleanedRuns = RunStartupCleanup.MarkOrphanedRuns(orphaned, reconciledAt);
+
+    var affectedProjectIds = orphaned.Select(r => r.ProjectId).Distinct().ToList();
+    var affectedProjects = await db.Projects
+        .Where(p => affectedProjectIds.Contains(p.Id)
+                    || p.LastRunStatus == RunStatus.Running
+                    || p.LastRunStatus == RunStatus.Pending
+                    || (p.CurrentTask != null && p.CurrentTask.Length > 500))
+        .ToListAsync();
+    var cleanedProjects = RunStartupCleanup.ReconcileOrphanedProjects(affectedProjects, reconciledAt);
+    var sanitizedTasks = RunStartupCleanup.SanitizeResumeTasks(affectedProjects);
+    var runLock = scope.ServiceProvider.GetRequiredService<RunLock>();
+    var recoveredLocks = affectedProjects.Count(project => runLock.TryRecoverDeadOwner(project, out _));
+
+    if (cleanedRuns > 0 || cleanedProjects > 0 || sanitizedTasks > 0 || recoveredLocks > 0)
     {
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
-        logger.LogWarning("Marked {Count} orphaned run(s) failed after runner restart.", cleaned);
+        logger.LogWarning(
+            "Restart recovery: {Runs} run(s) paused, {Projects} project snapshot(s) reconciled, " +
+            "{Tasks} oversized task(s) sanitized, {Locks} dead lock(s) removed.",
+            cleanedRuns, cleanedProjects, sanitizedTasks, recoveredLocks);
     }
 
     foreach (var kind in Enum.GetValues<ProviderKind>())

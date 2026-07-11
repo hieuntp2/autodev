@@ -140,6 +140,9 @@ public class RunOrchestrator
     {
         var run = new RunRecord { ProjectId = project.Id, Status = RunStatus.Running };
         _db.Runs.Add(run);
+        project.LastRunStatus = RunStatus.Running;
+        project.LastRunAt = run.StartedAt;
+        project.LastError = null;
         await _db.SaveChangesAsync(ct);
 
         var logBuffer = new StringBuilder();
