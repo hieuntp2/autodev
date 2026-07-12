@@ -12,7 +12,7 @@
     Run this from an elevated (Administrator) PowerShell prompt.
 
 .PARAMETER IntervalHours
-    How often the run task fires. Default 5.
+    How often the run task fires. Default 2.
 
 .PARAMETER SkipBuild
     Reuse an existing .\publish folder instead of rebuilding.
@@ -27,7 +27,7 @@
 #>
 [CmdletBinding()]
 param(
-    [double]$IntervalHours = 5,
+    [double]$IntervalHours = 2,
     [string]$PublishDir = "$PSScriptRoot\..\publish",
     [switch]$SkipBuild,
     [switch]$NoDashboard
