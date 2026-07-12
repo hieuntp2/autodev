@@ -1,0 +1,88 @@
+{
+  "skill": "retro-bit-sound-designer",
+  "cases": [
+    {
+      "prompt": "Generate an 8-bit sound effect for when the pet earns a reward",
+      "shouldTrigger": true,
+      "note": "core: generate a bit sound effect"
+    },
+    {
+      "prompt": "Create a retro blip sfx for the tap interaction",
+      "shouldTrigger": true,
+      "note": "core: blip/sfx synthesis request"
+    },
+    {
+      "prompt": "Synthesize a chiptune beep for the button press",
+      "shouldTrigger": true,
+      "note": "core: chiptune beep synthesis"
+    },
+    {
+      "prompt": "Make a soft chirp sound to play when the pet wakes up",
+      "shouldTrigger": true,
+      "note": "core: chirp sound cue"
+    },
+    {
+      "prompt": "I need a wav asset for the charging power hum, exported as an ogg asset too",
+      "shouldTrigger": true,
+      "note": "core: wav/ogg audio asset export"
+    },
+    {
+      "prompt": "Do the sound synthesis for the surprise reaction, short and bit-like",
+      "shouldTrigger": true,
+      "note": "core: explicit sound synthesis"
+    },
+    {
+      "prompt": "Generate the chiptune sfx synced to the happy hop pet animation",
+      "shouldTrigger": true,
+      "expectedWinner": "retro-bit-sound-designer",
+      "note": "ambiguous: mentions 'pet animation' (visual) but the ask is chiptune sfx -> sound skill must out-rank the visual skill"
+    },
+    {
+      "prompt": "Add an 8-bit sound effect that plays on frame 2 of the pet animation",
+      "shouldTrigger": true,
+      "expectedWinner": "retro-bit-sound-designer",
+      "note": "ambiguous: sound-on-a-frame request; two sound triggers beat the single 'pet animation' visual hit"
+    },
+    {
+      "prompt": "Create a sprite sheet pixel animation for the pet",
+      "shouldTrigger": false,
+      "expectedWinner": "pixel-animation-artist",
+      "note": "near-miss: pure visual creation; sound skill must NOT trigger and the visual skill must win"
+    },
+    {
+      "prompt": "Add a happy hop animation",
+      "shouldTrigger": false,
+      "note": "near-miss: visual/behavior animation add, no audio ask"
+    },
+    {
+      "prompt": "Try a wave animation",
+      "shouldTrigger": false,
+      "note": "near-miss: visual animation; 'wave' must not match the 'wav asset' trigger"
+    },
+    {
+      "prompt": "Decide which reaction fires when the pet is picked up and set its priority and cooldown",
+      "shouldTrigger": false,
+      "note": "near-miss: behavior-only mapping, owned by pet-behavior-designer"
+    },
+    {
+      "prompt": "Record a human voice-over greeting that the pet speaks",
+      "shouldTrigger": false,
+      "note": "near-miss: spoken voice, not abstract retro SFX"
+    },
+    {
+      "prompt": "Compose a two-minute ambient background music loop for the home screen",
+      "shouldTrigger": false,
+      "note": "near-miss: long background music, explicitly out of scope"
+    },
+    {
+      "prompt": "Fix the AudioManager crash when the media player loses audio focus on Android",
+      "shouldTrigger": false,
+      "note": "near-miss: generic Android audio playback bug, not asset design"
+    },
+    {
+      "prompt": "Set up text-to-speech narration for the onboarding tutorial",
+      "shouldTrigger": false,
+      "note": "near-miss: TTS/spoken narration, not a bit SFX"
+    }
+  ]
+}

@@ -19,8 +19,19 @@ public class RunStartupCleanupTests
         Assert.Equal(1, cleaned);
         Assert.Equal(RunStatus.Paused, run.Status);
         Assert.Equal(finishedAt, run.FinishedAt);
-        Assert.Equal("orphaned: runner restarted mid-run", run.Reason);
+        Assert.Equal(RunStartupCleanup.OrphanedReason, run.Reason);
         Assert.Equal(nameof(LifecycleStage.Reported), run.Stage);
+    }
+
+    [Fact]
+    public void Later_stage_runs_keep_their_stage()
+    {
+        var run = new RunRecord { Status = RunStatus.Running, Stage = nameof(LifecycleStage.Committed) };
+
+        RunStartupCleanup.MarkOrphanedRuns(new[] { run }, DateTime.UtcNow);
+
+        Assert.Equal(RunStatus.Paused, run.Status);
+        Assert.Equal(nameof(LifecycleStage.Committed), run.Stage);
     }
 
     [Fact]
@@ -42,13 +53,15 @@ public class RunStartupCleanupTests
         Assert.Equal(RunStatus.Success, runs[1].Status);
     }
 
-    [Fact]
-    public void Reconciles_project_snapshot_without_losing_resume_state()
+    [Theory]
+    [InlineData(RunStatus.Running)]
+    [InlineData(RunStatus.Pending)]
+    public void Reconciles_project_snapshot_without_losing_resume_state(RunStatus status)
     {
         var at = new DateTime(2026, 7, 11, 5, 0, 0, DateTimeKind.Utc);
         var project = new Project
         {
-            LastRunStatus = RunStatus.Running,
+            LastRunStatus = status,
             CurrentTask = "continue this task",
             ProviderSessionId = "session-1"
         };
@@ -61,6 +74,23 @@ public class RunStartupCleanupTests
         Assert.Equal(RunStartupCleanup.OrphanedReason, project.LastError);
         Assert.Equal("continue this task", project.CurrentTask);
         Assert.Equal("session-1", project.ProviderSessionId);
+    }
+
+    [Fact]
+    public void Settled_projects_and_existing_errors_are_left_alone()
+    {
+        var projects = new[]
+        {
+            new Project { LastRunStatus = RunStatus.Success },
+            new Project { LastRunStatus = RunStatus.Running, LastError = "real error" }
+        };
+
+        var cleaned = RunStartupCleanup.ReconcileOrphanedProjects(projects, DateTime.UtcNow);
+
+        Assert.Equal(1, cleaned);
+        Assert.Equal(RunStatus.Success, projects[0].LastRunStatus);
+        Assert.Equal(RunStatus.Paused, projects[1].LastRunStatus);
+        Assert.Equal("real error", projects[1].LastError);
     }
 
     [Fact]

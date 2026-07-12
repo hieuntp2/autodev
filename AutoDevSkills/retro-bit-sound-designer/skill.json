@@ -1,0 +1,40 @@
+{
+  "id": "retro-bit-sound-designer",
+  "name": "Retro Bit Sound Designer",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "Designs, synthesises, validates and packages SHORT (<= ~1s) original retro bit-style sound effects for pet reactions. Renders deterministic 16-bit PCM WAV via Python stdlib (square/pulse/triangle/sine/noise + ADSR + pitch glide), exports OGG for Android when ffmpeg is present, writes an <id>.sound.json cue-metadata file, and validates duration, sample rate, channels, clipping, edge silence and manifest linkage. Never imitates copyrighted sounds; owns audio assets only, not visuals or behavior.",
+  "invocationHint": "Use $retro-bit-sound-designer to synthesise, validate and package a short original retro bit-style sound effect (WAV + OGG + <id>.sound.json) bound to a pet animation.",
+  "triggers": [
+    "bit sound",
+    "8-bit sound",
+    "chiptune",
+    "sound effect",
+    "sfx",
+    "retro sound",
+    "blip",
+    "beep",
+    "chirp sound",
+    "wav asset",
+    "ogg asset",
+    "sound synthesis",
+    "audio asset",
+    "sound sync"
+  ],
+  "entrypoints": {
+    "generate": "scripts/generate_bit_sfx.py",
+    "validate": "scripts/validate_audio_asset.py"
+  },
+  "runtime": {
+    "language": "python",
+    "requires": "Python 3.9+ standard library only (wave, struct, math). Optional: ffmpeg/ffprobe on PATH for OGG export & deep OGG checks."
+  },
+  "outputConvention": [
+    "Write generated audio into the TARGET PROJECT (never back into AutoDevSkills/).",
+    "Android layout: app/src/main/assets/pet/sounds/<sound_id>/",
+    "  <sound_id>.wav        # lossless deterministic source (16-bit PCM mono)",
+    "  <sound_id>.ogg        # shipping format (only when ffmpeg is present)",
+    "  <sound_id>.sound.json # cue metadata (see SKILL.md)"
+  ],
+  "docs": "SKILL.md"
+}

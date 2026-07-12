@@ -6,6 +6,11 @@ public static class RunStartupCleanup
 {
     public const string OrphanedReason = "orphaned: runner restarted mid-run";
 
+    /// <summary>
+    /// Reconcile runs that were still Pending/Running when the process died. A
+    /// restart is an infrastructure interruption, not a task failure, so these
+    /// are paused and remain resumable. Mirrors scripts/finish-active-runs.sql.
+    /// </summary>
     public static int MarkOrphanedRuns(IEnumerable<RunRecord> runs, DateTime finishedAtUtc)
     {
         var count = 0;
@@ -17,6 +22,7 @@ public static class RunStartupCleanup
             run.Status = RunStatus.Paused;
             run.FinishedAt = finishedAtUtc;
             run.Reason = OrphanedReason;
+            // Do not leave the dashboard lifecycle track stuck mid-run.
             if (string.IsNullOrWhiteSpace(run.Stage)
                 || run.Stage == nameof(LifecycleStage.Planned)
                 || run.Stage == nameof(LifecycleStage.Running))
@@ -28,6 +34,10 @@ public static class RunStartupCleanup
         return count;
     }
 
+    /// <summary>
+    /// Reconcile project snapshots left Pending/Running while preserving task
+    /// and provider session resume state.
+    /// </summary>
     public static int ReconcileOrphanedProjects(IEnumerable<Project> projects, DateTime finishedAtUtc)
     {
         var count = 0;

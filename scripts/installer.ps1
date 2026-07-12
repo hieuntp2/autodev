@@ -71,19 +71,26 @@ $exe = Join-Path (Resolve-Path $PublishDir) "AutoDevRunner.exe"
 if (-not (Test-Path $exe)) { throw "Executable not found: $exe. Run without -SkipBuild first." }
 $workDir = Split-Path $exe -Parent
 
-# --- 2. Shared task settings + principal (current user, run only when logged on) ---
+# --- 2. Task settings + principal (current user, run only when logged on) ---
 $user = "$env:USERDOMAIN\$env:USERNAME"
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
+# Run task: bounded (a stuck run must not block the next firing forever).
 $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
              -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 6)
+# Dashboard task: long-lived. ExecutionTimeLimit 0 = no limit (a 6h limit here
+# would make Task Scheduler kill the dashboard 6h after logon); restart it
+# automatically if it ever crashes.
+$dashSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+                -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Seconds 0) `
+                -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 
-function Register-Task($name, $action, $trigger, $desc) {
+function Register-Task($name, $action, $trigger, $desc, $taskSettings) {
     if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) {
         Write-Host "Removing existing task '$name'..." -ForegroundColor Yellow
         Unregister-ScheduledTask -TaskName $name -Confirm:$false
     }
     Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger `
-        -Principal $principal -Settings $settings -Description $desc | Out-Null
+        -Principal $principal -Settings $taskSettings -Description $desc | Out-Null
     Write-Host "Installed scheduled task '$name'." -ForegroundColor Green
 }
 
@@ -92,14 +99,14 @@ $runAction = New-ScheduledTaskAction -Execute $exe -Argument "--run-due" -Workin
 $runTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) `
               -RepetitionInterval (New-TimeSpan -Hours $IntervalHours)
 Register-Task $RunTaskName $runAction $runTrigger `
-    "AutoDev Runner: run all due projects via Codex/Claude every $IntervalHours hour(s)."
+    "AutoDev Runner: run all due projects via Codex/Claude every $IntervalHours hour(s)." $settings
 
 # --- 4. Dashboard task (optional) ---
 if (-not $NoDashboard) {
     $dashAction = New-ScheduledTaskAction -Execute $exe -WorkingDirectory $workDir
     $dashTrigger = New-ScheduledTaskTrigger -AtLogOn -User $user
     Register-Task $DashTaskName $dashAction $dashTrigger `
-        "AutoDev Runner: local web dashboard/API (http://localhost:5099)."
+        "AutoDev Runner: local web dashboard/API (http://localhost:5099)." $dashSettings
     Write-Host "`nStarting dashboard now..." -ForegroundColor Cyan
     Start-ScheduledTask -TaskName $DashTaskName
 }

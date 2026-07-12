@@ -1,0 +1,45 @@
+{
+  "id": "eye-only-pixel-animation-artist",
+  "name": "Eye-Only Pixel Animation Artist",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "Produces eye-only visual animation assets for the cyan-eye Android pet whose whole screen is its face: sharp per-frame PNGs, a sprite sheet, a nearest-neighbour preview GIF and an <id>.animation.json manifest. Cyan eyes are the identity center on a black background; accessories/effects are temporary. No anti-aliasing, blur, gradients or soft shadows. Reuses the pixel-animation-artist engine to draw; adds eye-only style, packaging and validation.",
+  "invocationHint": "Use $eye-only-pixel-animation-artist to draw, package (sprite sheet + preview GIF) and validate eye-only cyan-eye pet-face animation assets plus their animation.json manifest.",
+  "triggers": [
+    "eye-only",
+    "eye only",
+    "eye-only animation",
+    "eye animation",
+    "blink animation",
+    "eyelid",
+    "cyan eye",
+    "cyan eyes",
+    "eye squish",
+    "eye emotion",
+    "pet face",
+    "gaze animation",
+    "eye frames",
+    "redraw as eye-only"
+  ],
+  "entrypoints": {
+    "generate": "scripts/build_sprite_sheet.py",
+    "validate": "scripts/validate_pixel_assets.py"
+  },
+  "runtime": {
+    "language": "python",
+    "requires": "Pillow (pip install Pillow); reuses ../pixel-animation-artist engine to draw frames"
+  },
+  "outputConvention": [
+    "Write generated assets into the TARGET PROJECT (Android), never back into AutoDevSkills/.",
+    "Layout: app/src/main/assets/pet/animations/<animation_id>/",
+    "  frames/frame_000.png, frames/frame_001.png, ...",
+    "  <animation_id>_sheet.png",
+    "  <animation_id>_preview.gif",
+    "  <animation_id>.animation.json",
+    "The manifest conforms to the shared schema ../pixel-animation-artist/schema/animation.schema.json (not copied here).",
+    "Sound linkage: manifest events[] entries of {\"type\":\"sound\",\"value\":\"<sound_cue_id>\"}; the asset is owned by retro-bit-sound-designer.",
+    "Frames are drawn with the reused engine ../pixel-animation-artist/scripts/draw_pixel_animation.py, then packaged + validated by this skill's scripts."
+  ],
+  "docs": "SKILL.md",
+  "schema": ""
+}

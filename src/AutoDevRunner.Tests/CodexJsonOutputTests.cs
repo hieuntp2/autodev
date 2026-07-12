@@ -64,4 +64,36 @@ public class CodexJsonOutputTests
 
         Assert.Null(CodexJsonOutput.FormatLiveLine(line));
     }
+
+    // Regression: gpt-5.6-sol emits "exit_code": null while a command runs.
+    // TryGetInt32 throws on non-Number elements, and this ran inside the
+    // process-output callback — the unhandled exception killed the whole
+    // runner ~30s after "invoking Codex" (Windows Event Log, 2026-07-11/12).
+    [Fact]
+    public void Null_exit_code_formats_without_crashing()
+    {
+        const string line = "{\"type\":\"item.completed\",\"item\":{\"id\":\"cmd-1\",\"type\":\"command_execution\",\"command\":\"gradle build\",\"status\":\"in_progress\",\"exit_code\":null}}";
+
+        var display = CodexJsonOutput.FormatLiveLine(line);
+
+        Assert.Equal("[command] in_progress: gradle build", display);
+    }
+
+    [Fact]
+    public void Null_usage_tokens_parse_without_crashing()
+    {
+        const string stdout = """
+            {"type":"thread.started","thread_id":"thread-null"}
+            {"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","command":"npm test","status":"in_progress","exit_code":null}}
+            {"type":"turn.completed","usage":{"input_tokens":null,"output_tokens":null}}
+            """;
+
+        var parsed = CodexJsonOutput.Parse(stdout);
+
+        Assert.True(parsed.IsJsonStream);
+        Assert.Equal(CodexTerminalKind.Completed, parsed.TerminalKind);
+        Assert.Null(parsed.InputTokens);
+        Assert.Null(parsed.OutputTokens);
+        Assert.Contains(parsed.LiveLines, line => line.Contains("npm test"));
+    }
 }

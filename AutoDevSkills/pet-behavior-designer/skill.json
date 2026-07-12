@@ -1,0 +1,45 @@
+{
+  "id": "pet-behavior-designer",
+  "name": "Pet Behavior Designer",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "Behavior authority for the Android eye-only pet: designs emotional states, maps normalized events (touch/long-press/repeated-tap/swipe, pickup/tilt/shake/proximity/ambient-light, charging/battery, time-of-day, lifecycle) to bounded reactions, and orchestrates animation priority, interruptibility, cooldown/minVisibleMs, seedable randomness, compact long-term memory (summaries not raw streams) and slowly-evolving bounded personality traits. It SELECTS the animation_id, optional sound_cue_id and timing intent for each reaction and emits precise handoff requests to eye-only-pixel-animation-artist and retro-bit-sound-designer; it never draws frames or synthesises audio.",
+  "invocationHint": "Use $pet-behavior-designer to design or extend the pet's emotional behavior: define states, map an event to a bounded reaction (state + animation_id + optional sound_cue_id + priority + cooldown + interruptibility + memory/personality deltas), then validate and simulate it.",
+  "triggers": [
+    "pet behavior",
+    "emotional state",
+    "behavior state machine",
+    "touch reaction",
+    "sensor reaction",
+    "reaction to",
+    "long press",
+    "repeated tap",
+    "charging reaction",
+    "battery reaction",
+    "animation priority",
+    "cooldown",
+    "interruptibility",
+    "personality trait",
+    "long-term memory",
+    "behavior simulation"
+  ],
+  "entrypoints": {
+    "generate": "scripts/simulate_behavior.py",
+    "validate": "scripts/validate_behavior_config.py"
+  },
+  "runtime": {
+    "language": "python",
+    "requires": "Python 3.11+ standard library only (no third-party packages)"
+  },
+  "outputConvention": [
+    "Write output into the TARGET PROJECT, never back into AutoDevSkills/.",
+    "Behavior config JSON -> app/src/main/assets/pet/behavior/ (e.g. behavior.json).",
+    "Behavior code (event normalization, selector, cooldown/priority policy, memory,",
+    "  personality) -> the pet behavior package, adapting to the project's architecture",
+    "  (e.g. PetBehaviorController and its collaborators).",
+    "This skill selects animation_id and sound_cue_id only; visual assets are produced by",
+    "  eye-only-pixel-animation-artist and audio assets by retro-bit-sound-designer.",
+    "See references/cross-skill-contract.md for the shared id/ownership/priority contract."
+  ],
+  "docs": "SKILL.md"
+}

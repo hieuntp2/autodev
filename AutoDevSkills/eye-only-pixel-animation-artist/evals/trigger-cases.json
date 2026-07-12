@@ -1,0 +1,87 @@
+{
+  "skill": "eye-only-pixel-animation-artist",
+  "cases": [
+    {
+      "prompt": "Create the eye-only blink animation frames for the pet's cyan eyes",
+      "shouldTrigger": true,
+      "note": "core case: eye-only + blink animation + cyan eyes"
+    },
+    {
+      "prompt": "Redraw the pet as eye-only: just the cyan eye on a black background",
+      "shouldTrigger": true,
+      "note": "redraw-as-eye-only conversion of an existing body into the face-only style"
+    },
+    {
+      "prompt": "I need an eye animation showing the eyes squinting when the pet is happy",
+      "shouldTrigger": true,
+      "note": "emotional eye animation asset"
+    },
+    {
+      "prompt": "Design the eyelid motion for a sleepy half-closed gaze animation",
+      "shouldTrigger": true,
+      "note": "eyelid + gaze animation"
+    },
+    {
+      "prompt": "Build eye frames for the surprised look with wide cyan eyes",
+      "shouldTrigger": true,
+      "note": "eye frames + cyan eyes"
+    },
+    {
+      "prompt": "Make an eye squish animation when the pet gets petted",
+      "shouldTrigger": true,
+      "note": "eye squish accessory-free emotional reaction"
+    },
+    {
+      "prompt": "Create the eye-only pixel animation frames for the cyan eye blink",
+      "shouldTrigger": true,
+      "expectedWinner": "eye-only-pixel-animation-artist",
+      "note": "ambiguous: pixel-animation-artist matches 'pixel animation' (1) but this skill matches eye-only + cyan eye (2) and must win"
+    },
+    {
+      "prompt": "Draw the eye-only animation sprite sheet for a blink of the eyes",
+      "shouldTrigger": true,
+      "expectedWinner": "eye-only-pixel-animation-artist",
+      "note": "ambiguous: pixel-animation-artist matches 'sprite sheet' (1); this skill matches eye-only + eye-only animation (2) and must win"
+    },
+    {
+      "prompt": "Decide which reaction the pet plays when tapped and set its cooldown and priority",
+      "shouldTrigger": false,
+      "note": "near-miss: behavior-only decision, owned by pet-behavior-designer"
+    },
+    {
+      "prompt": "Compose a retro chiptune chirp sound cue for the happy reward",
+      "shouldTrigger": false,
+      "note": "near-miss: audio asset, owned by retro-bit-sound-designer"
+    },
+    {
+      "prompt": "Build the app settings screen layout with a toggle list and a save button",
+      "shouldTrigger": false,
+      "note": "near-miss: generic Android UI, not pet art"
+    },
+    {
+      "prompt": "Draw a realistic watercolor portrait of a cat with soft shading",
+      "shouldTrigger": false,
+      "note": "near-miss: non-pixel illustration with gradients/soft shading"
+    },
+    {
+      "prompt": "Crop and resize these product photos for the store listing",
+      "shouldTrigger": false,
+      "note": "near-miss: unrelated raster image editing"
+    },
+    {
+      "prompt": "Add a loading spinner animation to the login button",
+      "shouldTrigger": false,
+      "note": "near-miss: generic UI animation, nothing to do with the pet's eyes"
+    },
+    {
+      "prompt": "Check that every sound cue id resolves to a real wav asset file",
+      "shouldTrigger": false,
+      "note": "near-miss: sound-link validation, owned by retro-bit-sound-designer"
+    },
+    {
+      "prompt": "Design a full-body mascot character sheet with cute limbs and outfits",
+      "shouldTrigger": false,
+      "note": "near-miss: full-body character art; this product has no default full body"
+    }
+  ]
+}

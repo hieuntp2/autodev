@@ -76,6 +76,26 @@ public class ProcessRunner
         var terminal = new TaskCompletionSource<ProcessTerminalSignal>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
+        // Callbacks run on the AsyncStreamReader thread-pool threads: an
+        // exception escaping them is an UNHANDLED exception that terminates
+        // the entire runner process mid-run (and orphans the CLI child). The
+        // agent console must outlive any observer bug, so failures are noted
+        // in stderr (once per callback kind) and swallowed.
+        var callbackErrorNoted = 0;
+        void GuardedCallback(Action action, string kind)
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                if (Interlocked.Exchange(ref callbackErrorNoted, 1) == 0)
+                    lock (outputLock)
+                        stderr.AppendLine($"[runner] {kind} callback threw and was ignored: {ex.Message}");
+            }
+        }
+
         process.OutputDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
@@ -84,9 +104,12 @@ public class ProcessRunner
                 stdout.AppendLine(e.Data);
                 lastOutputAt = DateTimeOffset.UtcNow;
             }
-            onOutput?.Invoke(e.Data);
-            var signal = terminalDetector?.Invoke(e.Data);
-            if (signal is not null) terminal.TrySetResult(signal);
+            GuardedCallback(() => onOutput?.Invoke(e.Data), "output");
+            GuardedCallback(() =>
+            {
+                var signal = terminalDetector?.Invoke(e.Data);
+                if (signal is not null) terminal.TrySetResult(signal);
+            }, "terminal-detector");
         };
         process.ErrorDataReceived += (_, e) =>
         {
@@ -96,7 +119,7 @@ public class ProcessRunner
                 stderr.AppendLine(e.Data);
                 lastOutputAt = DateTimeOffset.UtcNow;
             }
-            onOutput?.Invoke(e.Data);
+            GuardedCallback(() => onOutput?.Invoke(e.Data), "output");
         };
 
         try
@@ -182,7 +205,8 @@ public class ProcessRunner
 
                 if (now >= nextHeartbeatAt)
                 {
-                    onOutput?.Invoke($"still running - last output {(int)(now - lastOutputSnapshot).TotalSeconds}s ago");
+                    GuardedCallback(() => onOutput?.Invoke(
+                        $"still running - last output {(int)(now - lastOutputSnapshot).TotalSeconds}s ago"), "heartbeat");
                     nextHeartbeatAt = now.Add(heartbeatInterval!.Value);
                 }
             }

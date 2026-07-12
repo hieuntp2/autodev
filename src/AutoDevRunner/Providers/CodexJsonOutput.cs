@@ -97,7 +97,22 @@ public static class CodexJsonOutput
     public static string? FormatLiveLine(string line)
     {
         if (!TryParse(line, out var doc)) return line;
-        using (doc) return FormatLive(doc.RootElement);
+        using (doc)
+        {
+            // This runs inside the process-output callback: an exception here
+            // would escape the stdout reader thread and kill the whole runner
+            // (observed with gpt-5.6-sol emitting "exit_code": null). Never
+            // let a surprising event shape take the run down — fall back to
+            // the raw line so the live view still shows something.
+            try
+            {
+                return FormatLive(doc.RootElement);
+            }
+            catch (Exception)
+            {
+                return line;
+            }
+        }
     }
 
     private static string? FormatLive(JsonElement root)
@@ -168,9 +183,13 @@ public static class CodexJsonOutput
             ? value.GetString()
             : null;
 
+    // The ValueKind check is load-bearing: TryGetInt32 THROWS (rather than
+    // returning false) when the element is not a Number — Codex emits e.g.
+    // "exit_code": null while a command is still running.
     private static int? Int(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object
         && element.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.Number
         && value.TryGetInt32(out var number)
             ? number
             : null;
