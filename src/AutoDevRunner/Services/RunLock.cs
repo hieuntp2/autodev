@@ -5,6 +5,17 @@ using AutoDevRunner.Models;
 
 namespace AutoDevRunner.Services;
 
+/// <summary>Cross-process liveness of a project's run lock.</summary>
+public enum RunLockLiveness
+{
+    /// <summary>No lock file exists — nothing is running.</summary>
+    NotHeld,
+    /// <summary>Held by this process, or by a live process (PID + start time match).</summary>
+    HeldByLiveOwner,
+    /// <summary>Lock exists but its lease expired or its owner process is dead.</summary>
+    Stale
+}
+
 /// <summary>
 /// Prevents concurrent runs of the same project across both threads and
 /// processes. A per-repo lock file is used because dashboard/manual runs and
@@ -110,6 +121,25 @@ public class RunLock
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Reports whether the project's run lock is held by a process that is
+    /// still alive. Used by the watchdog to detect runs whose owning runner
+    /// died mid-run (PC sleep/shutdown, Task Scheduler kill). An unreadable
+    /// lock file is conservatively treated as held.
+    /// </summary>
+    public RunLockLiveness CheckLiveness(Project project)
+    {
+        CleanupExpiredInMemory(project.Id);
+        if (_active.ContainsKey(project.Id)) return RunLockLiveness.HeldByLiveOwner;
+        if (string.IsNullOrWhiteSpace(project.RepoPath)) return RunLockLiveness.NotHeld;
+
+        var lockPath = LockPathFor(project.RepoPath);
+        if (!File.Exists(lockPath)) return RunLockLiveness.NotHeld;
+        if (!TryRead(lockPath, out var info)) return RunLockLiveness.HeldByLiveOwner;
+        if (IsExpired(info!)) return RunLockLiveness.Stale;
+        return OwnerIsAlive(info!) ? RunLockLiveness.HeldByLiveOwner : RunLockLiveness.Stale;
     }
 
     /// <summary>

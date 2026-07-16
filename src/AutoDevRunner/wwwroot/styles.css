@@ -119,6 +119,16 @@ pre {
 .field.row { display: flex; align-items: center; gap: 8px; }
 .field.row input[type=checkbox] { width: 16px; height: 16px; }
 .field.row label { margin: 0; }
+
+/* Provider priority editor: one row per provider, checkbox + reorder buttons */
+.prov-list { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.prov-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel-2); }
+.prov-item + .prov-item { border-top: 1px solid var(--border); }
+.prov-item input[type=checkbox] { width: 16px; height: 16px; flex: 0 0 auto; }
+.prov-item .prov-name { flex: 1; }
+.prov-item.prov-off .prov-name { color: var(--muted); text-decoration: line-through; }
+.prov-item .prov-move button { min-width: 28px; }
+.prov-item .prov-move button:disabled { opacity: 0.35; cursor: default; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
 /* Folder picker */
 .pathpick { display: flex; gap: 8px; }

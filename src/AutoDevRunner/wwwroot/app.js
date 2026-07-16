@@ -620,7 +620,10 @@ function openProjectModal(p, briefContent) {
       <div class="field"><label>Priority</label><input type="number" id="f-prio" value="${p.priority ?? 0}"></div>
       <div class="field"><label>Max run minutes</label><input type="number" id="f-max" value="${p.maxRunMinutes ?? 30}"></div>
     </div>
-    <div class="field"><label>Provider priority</label><input type="text" id="f-prov" value="${esc(p.providerPriority || "Codex,Claude")}"></div>
+    <div class="field"><label>Provider priority</label>
+      <div id="f-prov-list" class="prov-list"></div>
+      <div class="muted" style="font-size:11px">Tick a provider to allow it for this project; ↑/↓ sets the order tried (top = first).</div>
+    </div>
     <div class="field"><label>Validation command</label><input type="text" id="f-val" value="${esc(p.validationCommand || "")}" placeholder="dotnet build"></div>
     <div class="grid2">
       <div class="field row"><input type="checkbox" id="f-commit" ${p.autoCommit ?? true ? "checked" : ""}><label>Auto commit</label></div>
@@ -631,6 +634,7 @@ function openProjectModal(p, briefContent) {
     <div class="field"><label>Notes</label><textarea id="f-notes">${esc(p.notes || "")}</textarea></div>
   `;
   modal.classList.remove("hidden");
+  const readProviderPriority = initProviderPriority(p.providerPriority || "Codex,Claude");
   $("#f-repo-browse").onclick = () => {
     const fb = $("#folder-browser");
     if (fb.classList.contains("hidden")) openFolderBrowser($("#f-repo").value.trim());
@@ -646,7 +650,7 @@ function openProjectModal(p, briefContent) {
       projectType: $("#f-type").value.trim(),
       priority: +$("#f-prio").value,
       maxRunMinutes: +$("#f-max").value,
-      providerPriority: $("#f-prov").value.trim(),
+      providerPriority: readProviderPriority(),
       validationCommand: $("#f-val").value.trim(),
       autoCommit: $("#f-commit").checked,
       autoPush: $("#f-push").checked,
@@ -657,6 +661,7 @@ function openProjectModal(p, briefContent) {
       notes: $("#f-notes").value
     };
     if (!body.name || !body.repoPath) { toast("Name and repo path are required.", true); return; }
+    if (!body.providerPriority) { toast("Select at least one provider.", true); return; }
     try {
       if (isEdit) await api(`/projects/${p.id}`, { method: "PUT", body: JSON.stringify(body) });
       else await api(`/projects`, { method: "POST", body: JSON.stringify(body) });
@@ -665,6 +670,37 @@ function openProjectModal(p, briefContent) {
       render();
     } catch (e) { toast(e.message, true); }
   };
+}
+
+// ---- Provider priority editor (checkbox = allowed, row order = try order) ----
+// Serializes back to the same CSV the backend already parses ("Codex,Claude"),
+// so no API or DB change is needed. Unknown tokens from old data are kept.
+const KNOWN_PROVIDERS = ["Codex", "Claude"];
+function initProviderPriority(csv) {
+  const chosen = (csv || "").split(",").map(s => s.trim()).filter(Boolean)
+    .map(s => KNOWN_PROVIDERS.find(k => k.toLowerCase() === s.toLowerCase()) || s);
+  const rows = [...new Set([...chosen, ...KNOWN_PROVIDERS])]
+    .map(kind => ({ kind, checked: chosen.some(c => c.toLowerCase() === kind.toLowerCase()) }));
+  const list = $("#f-prov-list");
+
+  const draw = () => {
+    list.innerHTML = rows.map((r, i) => `
+      <div class="prov-item${r.checked ? "" : " prov-off"}">
+        <input type="checkbox" ${r.checked ? "checked" : ""} title="Allow ${esc(r.kind)}">
+        <span class="prov-name">${i + 1}. ${esc(r.kind)}</span>
+        <span class="prov-move">
+          <button type="button" class="sm prov-up" ${i === 0 ? "disabled" : ""} title="Try earlier">↑</button>
+          <button type="button" class="sm prov-down" ${i === rows.length - 1 ? "disabled" : ""} title="Try later">↓</button>
+        </span>
+      </div>`).join("");
+    list.querySelectorAll(".prov-item").forEach((el, i) => {
+      el.querySelector("input").onchange = e => { rows[i].checked = e.target.checked; draw(); };
+      el.querySelector(".prov-up").onclick = () => { [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]]; draw(); };
+      el.querySelector(".prov-down").onclick = () => { [rows[i + 1], rows[i]] = [rows[i], rows[i + 1]]; draw(); };
+    });
+  };
+  draw();
+  return () => rows.filter(r => r.checked).map(r => r.kind).join(",");
 }
 
 // ---- Folder browser (repo path picker) ----

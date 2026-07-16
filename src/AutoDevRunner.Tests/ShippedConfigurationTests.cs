@@ -25,6 +25,44 @@ public class ShippedConfigurationTests
     }
 
     [Fact]
+    public void Appsettings_claude_uses_streaming_output()
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(RepoRoot, "src", "AutoDevRunner", "appsettings.json")));
+        var claude = doc.RootElement.GetProperty("AutoDev")
+            .GetProperty("Providers").GetProperty("Claude");
+        var templates = new[]
+        {
+            claude.GetProperty("Arguments").GetString(),
+            claude.GetProperty("ResumeArguments").GetString(),
+            claude.GetProperty("Tiers").GetProperty("Light").GetString(),
+            claude.GetProperty("Tiers").GetProperty("Standard").GetString(),
+            claude.GetProperty("Tiers").GetProperty("Deep").GetString()
+        };
+
+        foreach (var args in templates)
+        {
+            // stream-json is load-bearing: without live output any Claude run
+            // longer than the idle timeout is killed as "stalled", and the
+            // dashboard cannot show progress or detect the terminal event.
+            Assert.Contains("--output-format stream-json", args);
+            Assert.Contains("--verbose", args); // required by the CLI with -p + stream-json
+        }
+    }
+
+    [Fact]
+    public void Appsettings_run_watchdog_is_enabled()
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(RepoRoot, "src", "AutoDevRunner", "appsettings.json")));
+        var watchdog = doc.RootElement.GetProperty("AutoDev").GetProperty("Watchdog");
+
+        Assert.True(watchdog.GetProperty("Enabled").GetBoolean());
+        Assert.True(watchdog.GetProperty("IntervalSeconds").GetInt32() >= 10);
+        Assert.True(watchdog.GetProperty("GraceMinutes").GetInt32() >= 1);
+    }
+
+    [Fact]
     public void Appsettings_scheduler_interval_is_two_hours()
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(

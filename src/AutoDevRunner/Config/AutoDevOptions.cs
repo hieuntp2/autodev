@@ -13,6 +13,7 @@ public class AutoDevOptions
     public ResumeOptions Resume { get; set; } = new();
     public PlannerOptions Planner { get; set; } = new();
     public ExecutionOptions Execution { get; set; } = new();
+    public WatchdogOptions Watchdog { get; set; } = new();
     public ValidationOptions Validation { get; set; } = new();
     public ContinuousOptions Continuous { get; set; } = new();
     public SkillsOptions Skills { get; set; } = new();
@@ -69,6 +70,26 @@ public class ExecutionOptions
 {
     public int IdleTimeoutMinutes { get; set; } = 15;
     public int HeartbeatMinutes { get; set; } = 5;
+}
+
+/// <summary>
+/// Background run watchdog (web host only). Detects runs whose owning runner
+/// process died mid-run (PC sleep/shutdown, Task Scheduler kill) by probing
+/// the per-project run.lock, and pauses them as resumable within one tick
+/// instead of waiting for the next restart recovery.
+/// </summary>
+public class WatchdogOptions
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>How often to reconcile unfinished runs. Clamped to >= 10s.</summary>
+    public int IntervalSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// Runs younger than this are never reclaimed, so a run whose lock/DB row
+    /// are still being written is not misread as orphaned.
+    /// </summary>
+    public int GraceMinutes { get; set; } = 2;
 }
 
 public class ValidationOptions

@@ -85,6 +85,10 @@ builder.Services.AddScoped<RunOrchestrator>();
 if (autoDevOptions.Scheduler.Enabled && !runOnce)
     builder.Services.AddHostedService<SchedulerService>();
 
+// ---- Run watchdog (web host only): pauses runs orphaned by a dead runner process ----
+if (autoDevOptions.Watchdog.Enabled && !runOnce)
+    builder.Services.AddHostedService<RunWatchdogService>();
+
 builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
