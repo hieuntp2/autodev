@@ -43,10 +43,13 @@ public class ProcessRunner
         TimeSpan? terminalExitGrace = null,
         IReadOnlyDictionary<string, string?>? environment = null)
     {
+        // Resolve npm-style ".cmd" shims (e.g. codex) to a launchable form;
+        // Process.Start with UseShellExecute=false cannot run a bare ".cmd".
+        var (resolvedFileName, resolvedArguments) = CommandResolver.Resolve(fileName, arguments);
         var psi = new ProcessStartInfo
         {
-            FileName = fileName,
-            Arguments = arguments,
+            FileName = resolvedFileName,
+            Arguments = resolvedArguments,
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
