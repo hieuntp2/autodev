@@ -50,7 +50,8 @@ public class TaskProposer
             FirstUsable(lessons.SuggestedNextTasks, lessons) is { } l ? (l, "learned") :
             ("Small maintenance pass: tidy code, improve docs/tests, and take one safe step toward the project goal.", "maintenance");
 
-        var suggestedSkill = _skills.Match(title).FirstOrDefault()?.Skill.Id;
+        // Task ideation happens in the Idea stage — that stage's toggles apply.
+        var suggestedSkill = _skills.Match(title, project.Id, LifecycleStage.Idea).FirstOrDefault()?.Skill.Id;
         var risk = _risk.Assess(Array.Empty<GitChange>(), title);
 
         var reason = source switch

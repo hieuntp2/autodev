@@ -10,14 +10,23 @@ public static class RunStartupCleanup
     /// Reconcile runs that were still Pending/Running when the process died. A
     /// restart is an infrastructure interruption, not a task failure, so these
     /// are paused and remain resumable. Mirrors scripts/finish-active-runs.sql.
+    /// Dashboard and Task Scheduler runs execute in SEPARATE AutoDevRunner
+    /// processes sharing one DB, so a starting process must not pause a run
+    /// whose owner is still alive: <paramref name="livenessByProjectId"/> and
+    /// <paramref name="grace"/> apply the same reclaim policy as the watchdog.
+    /// When no resolver is given (tests, SQL mirror) every run is reclaimable.
     /// </summary>
-    public static int MarkOrphanedRuns(IEnumerable<RunRecord> runs, DateTime finishedAtUtc)
+    public static int MarkOrphanedRuns(IEnumerable<RunRecord> runs, DateTime finishedAtUtc,
+        Func<int, RunLockLiveness>? livenessByProjectId = null, TimeSpan grace = default)
     {
         var count = 0;
         foreach (var run in runs)
         {
             if (run.FinishedAt is not null) continue;
             if (run.Status is not (RunStatus.Running or RunStatus.Pending)) continue;
+            if (livenessByProjectId is not null
+                && !RunWatchdogPolicy.ShouldReclaim(livenessByProjectId(run.ProjectId), run.StartedAt, finishedAtUtc, grace))
+                continue;
 
             run.Status = RunStatus.Paused;
             run.FinishedAt = finishedAtUtc;
@@ -36,14 +45,21 @@ public static class RunStartupCleanup
 
     /// <summary>
     /// Reconcile project snapshots left Pending/Running while preserving task
-    /// and provider session resume state.
+    /// and provider session resume state. Same live-owner protection as
+    /// <see cref="MarkOrphanedRuns"/>: a project whose run lock is held by a
+    /// live process keeps its Running snapshot.
     /// </summary>
-    public static int ReconcileOrphanedProjects(IEnumerable<Project> projects, DateTime finishedAtUtc)
+    public static int ReconcileOrphanedProjects(IEnumerable<Project> projects, DateTime finishedAtUtc,
+        Func<int, RunLockLiveness>? livenessByProjectId = null, TimeSpan grace = default)
     {
         var count = 0;
         foreach (var project in projects)
         {
             if (project.LastRunStatus is not (RunStatus.Running or RunStatus.Pending)) continue;
+            if (livenessByProjectId is not null
+                && !RunWatchdogPolicy.ShouldReclaim(
+                    livenessByProjectId(project.Id), project.LastRunAt ?? DateTime.MinValue, finishedAtUtc, grace))
+                continue;
 
             project.LastRunStatus = RunStatus.Paused;
             project.LastRunAt = finishedAtUtc;

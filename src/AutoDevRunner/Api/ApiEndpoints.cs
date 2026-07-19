@@ -442,9 +442,112 @@ public static class ApiEndpoints
             return Results.Ok(new { reloaded = true, count = skills.All.Count, root = skills.Root });
         });
 
+        // ---- Per-lifecycle-stage skill toggles (skills default to on for every stage).
+        //      Consulted today: Idea (task proposal) and Running (skills injected
+        //      into the executor prompt); other stages are stored for future gates. ----
+        api.MapGet("/skills/lifecycle", (SkillRegistry skills) =>
+        {
+            var stages = Enum.GetValues<LifecycleStage>().Where(s => s != LifecycleStage.Failed).ToList();
+            return Results.Ok(new
+            {
+                stages = stages.Select(s => s.ToString()),
+                activeStages = new[] { nameof(LifecycleStage.Idea), nameof(LifecycleStage.Running) },
+                skills = skills.All.Select(s => new
+                {
+                    s.Id,
+                    s.Name,
+                    enabledGlobal = s.EffectiveEnabled,
+                    disabledStages = stages
+                        .Where(st => skills.IsStageDisabled(st, s.Id))
+                        .Select(st => st.ToString())
+                })
+            });
+        });
+
+        api.MapPost("/skills/lifecycle/{stage}/{skillId}/enable", (string stage, string skillId, SkillRegistry skills) =>
+            Enum.TryParse<LifecycleStage>(stage, ignoreCase: true, out var st) && skills.SetEnabledForStage(st, skillId, true)
+                ? Results.Ok(new { stage = st.ToString(), skillId, enabled = true })
+                : Results.NotFound());
+
+        api.MapPost("/skills/lifecycle/{stage}/{skillId}/disable", (string stage, string skillId, SkillRegistry skills) =>
+            Enum.TryParse<LifecycleStage>(stage, ignoreCase: true, out var st) && skills.SetEnabledForStage(st, skillId, false)
+                ? Results.Ok(new { stage = st.ToString(), skillId, enabled = false })
+                : Results.NotFound());
+
+        // ---- Per-project lifecycle overrides: which skills each stage may use
+        //      in THIS project. Narrows on top of the global lifecycle matrix. ----
+        api.MapGet("/projects/{id:int}/skills/lifecycle", async (int id, AppDbContext db, SkillRegistry skills) =>
+        {
+            if (!await db.Projects.AnyAsync(p => p.Id == id)) return Results.NotFound();
+            var stages = Enum.GetValues<LifecycleStage>().Where(s => s != LifecycleStage.Failed).ToList();
+            var overrides = skills.DisabledStagesForProject(id);
+            var projectDisabled = new HashSet<string>(skills.DisabledForProject(id), StringComparer.OrdinalIgnoreCase);
+            return Results.Ok(new
+            {
+                stages = stages.Select(s => s.ToString()),
+                activeStages = new[] { nameof(LifecycleStage.Idea), nameof(LifecycleStage.Running) },
+                skills = skills.All.Select(s => new
+                {
+                    s.Id,
+                    s.Name,
+                    enabledGlobal = s.EffectiveEnabled,
+                    disabledForProject = projectDisabled.Contains(s.Id),
+                    // Off via the GLOBAL stage matrix (not editable here, shown as context).
+                    globalDisabledStages = stages
+                        .Where(st => skills.IsStageDisabled(st, s.Id))
+                        .Select(st => st.ToString()),
+                    // Off via THIS project's overrides (what this editor edits).
+                    disabledStages = stages
+                        .Where(st => overrides.TryGetValue(st, out var ids)
+                                     && ids.Contains(s.Id, StringComparer.OrdinalIgnoreCase))
+                        .Select(st => st.ToString())
+                })
+            });
+        });
+
+        api.MapPost("/projects/{id:int}/skills/lifecycle/{stage}/{skillId}/enable",
+            async (int id, string stage, string skillId, AppDbContext db, SkillRegistry skills) =>
+                await db.Projects.AnyAsync(p => p.Id == id)
+                && Enum.TryParse<LifecycleStage>(stage, ignoreCase: true, out var st)
+                && skills.SetEnabledForProjectStage(id, st, skillId, true)
+                    ? Results.Ok(new { projectId = id, stage, skillId, enabled = true })
+                    : Results.NotFound());
+
+        api.MapPost("/projects/{id:int}/skills/lifecycle/{stage}/{skillId}/disable",
+            async (int id, string stage, string skillId, AppDbContext db, SkillRegistry skills) =>
+                await db.Projects.AnyAsync(p => p.Id == id)
+                && Enum.TryParse<LifecycleStage>(stage, ignoreCase: true, out var st)
+                && skills.SetEnabledForProjectStage(id, st, skillId, false)
+                    ? Results.Ok(new { projectId = id, stage, skillId, enabled = false })
+                    : Results.NotFound());
+
+        // ---- Per-project skill toggles (skills default to on for every project) ----
+        api.MapGet("/projects/{id:int}/skills", async (int id, AppDbContext db, SkillRegistry skills) =>
+        {
+            if (!await db.Projects.AnyAsync(p => p.Id == id)) return Results.NotFound();
+            var disabled = new HashSet<string>(skills.DisabledForProject(id), StringComparer.OrdinalIgnoreCase);
+            return Results.Ok(skills.All.Select(s => new ProjectSkillDto(
+                s.Id, s.Name, s.Version, s.Description,
+                EnabledGlobal: s.EffectiveEnabled,
+                DisabledForProject: disabled.Contains(s.Id),
+                EnabledForProject: s.EffectiveEnabled && !disabled.Contains(s.Id),
+                s.Triggers)));
+        });
+
+        api.MapPost("/projects/{id:int}/skills/{skillId}/enable", async (int id, string skillId, AppDbContext db, SkillRegistry skills) =>
+            await db.Projects.AnyAsync(p => p.Id == id) && skills.SetEnabledForProject(id, skillId, true)
+                ? Results.Ok(new { projectId = id, skillId, enabled = true })
+                : Results.NotFound());
+
+        api.MapPost("/projects/{id:int}/skills/{skillId}/disable", async (int id, string skillId, AppDbContext db, SkillRegistry skills) =>
+            await db.Projects.AnyAsync(p => p.Id == id) && skills.SetEnabledForProject(id, skillId, false)
+                ? Results.Ok(new { projectId = id, skillId, enabled = false })
+                : Results.NotFound());
+
         // Preview which skill(s) a piece of task text would trigger (debug/tuning).
-        api.MapGet("/skills/match", (string? text, SkillRegistry skills) =>
-            Results.Ok(skills.Match(text).Select(m => new
+        // Optional projectId also applies that project's per-project toggles.
+        api.MapGet("/skills/match", (string? text, int? projectId, SkillRegistry skills) =>
+            Results.Ok(skills.Match(text, projectId).Select(m => new
             {
                 skillId = m.Skill.Id,
                 skillName = m.Skill.Name,

@@ -35,6 +35,81 @@ public class RunStartupCleanupTests
     }
 
     [Fact]
+    public void Runs_owned_by_a_live_process_are_not_paused()
+    {
+        var now = new DateTime(2026, 7, 18, 8, 0, 0, DateTimeKind.Utc);
+        var run = new RunRecord
+        {
+            ProjectId = 3,
+            Status = RunStatus.Running,
+            StartedAt = now.AddHours(-1)
+        };
+
+        var cleaned = RunStartupCleanup.MarkOrphanedRuns(new[] { run }, now,
+            _ => RunLockLiveness.HeldByLiveOwner, TimeSpan.FromMinutes(2));
+
+        Assert.Equal(0, cleaned);
+        Assert.Equal(RunStatus.Running, run.Status);
+        Assert.Null(run.FinishedAt);
+    }
+
+    [Fact]
+    public void Runs_younger_than_the_grace_window_are_not_paused()
+    {
+        var now = new DateTime(2026, 7, 18, 8, 0, 0, DateTimeKind.Utc);
+        var run = new RunRecord
+        {
+            ProjectId = 3,
+            Status = RunStatus.Pending,
+            StartedAt = now.AddSeconds(-30)
+        };
+
+        var cleaned = RunStartupCleanup.MarkOrphanedRuns(new[] { run }, now,
+            _ => RunLockLiveness.NotHeld, TimeSpan.FromMinutes(2));
+
+        Assert.Equal(0, cleaned);
+        Assert.Equal(RunStatus.Pending, run.Status);
+    }
+
+    [Fact]
+    public void Runs_with_a_dead_owner_past_grace_are_paused()
+    {
+        var now = new DateTime(2026, 7, 18, 8, 0, 0, DateTimeKind.Utc);
+        var run = new RunRecord
+        {
+            ProjectId = 3,
+            Status = RunStatus.Running,
+            StartedAt = now.AddMinutes(-10)
+        };
+
+        var cleaned = RunStartupCleanup.MarkOrphanedRuns(new[] { run }, now,
+            _ => RunLockLiveness.Stale, TimeSpan.FromMinutes(2));
+
+        Assert.Equal(1, cleaned);
+        Assert.Equal(RunStatus.Paused, run.Status);
+        Assert.Equal(RunStartupCleanup.OrphanedReason, run.Reason);
+    }
+
+    [Fact]
+    public void Project_snapshot_with_a_live_owner_keeps_running_status()
+    {
+        var now = new DateTime(2026, 7, 18, 8, 0, 0, DateTimeKind.Utc);
+        var project = new Project
+        {
+            Id = 3,
+            LastRunStatus = RunStatus.Running,
+            LastRunAt = now.AddHours(-1)
+        };
+
+        var cleaned = RunStartupCleanup.ReconcileOrphanedProjects(new[] { project }, now,
+            _ => RunLockLiveness.HeldByLiveOwner, TimeSpan.FromMinutes(2));
+
+        Assert.Equal(0, cleaned);
+        Assert.Equal(RunStatus.Running, project.LastRunStatus);
+        Assert.Null(project.LastError);
+    }
+
+    [Fact]
     public void Finished_or_terminal_runs_are_not_changed()
     {
         var existingFinishedAt = new DateTime(2026, 7, 8, 8, 0, 0, DateTimeKind.Utc);

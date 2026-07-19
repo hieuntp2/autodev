@@ -185,6 +185,12 @@ public class SkillsOptions
     public List<string> Disabled { get; set; } = new();
 
     /// <summary>
+    /// Path of the JSON file persisting runtime skill toggles (global and
+    /// per-project). Empty (default) = skills-state.json next to the exe.
+    /// </summary>
+    public string StateFile { get; set; } = string.Empty;
+
+    /// <summary>
     /// When true, keyword-matching auto-selects skills for a run. When false,
     /// skills are only used if a project explicitly names one (future use).
     /// </summary>

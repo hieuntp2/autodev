@@ -158,6 +158,8 @@ views.projects = async () => {
           <button class="sm" data-act="${p.paused ? "resume" : "pause"}" data-id="${p.id}">${p.paused ? "Resume" : "Pause"}</button>
           <button class="sm" data-act="${p.enabled ? "disable" : "enable"}" data-id="${p.id}">${p.enabled ? "Disable" : "Enable"}</button>
           <button class="sm" data-act="edit" data-id="${p.id}">Edit</button>
+          <button class="sm" data-act="skills" data-id="${p.id}" data-name="${esc(p.name)}">Edit skills</button>
+          <button class="sm" data-act="lifecycle" data-id="${p.id}" data-name="${esc(p.name)}">Edit lifecycle</button>
           <button class="sm danger" data-act="delete" data-id="${p.id}">Delete</button>
         </td>
       </tr>`).join("")}
@@ -165,12 +167,14 @@ views.projects = async () => {
   `;
   $("#new").onclick = () => openProjectModal();
   app.querySelectorAll("a[data-id]").forEach(a => a.onclick = () => navigate("projectDetail", +a.dataset.id));
-  app.querySelectorAll("button[data-act]").forEach(b => b.onclick = () => projectAction(b.dataset.act, +b.dataset.id));
+  app.querySelectorAll("button[data-act]").forEach(b => b.onclick = () => projectAction(b.dataset.act, +b.dataset.id, b.dataset.name));
 };
 
-async function projectAction(act, id) {
+async function projectAction(act, id, name) {
   try {
     if (act === "edit") { const d = await api(`/projects/${id}`); return openProjectModal(d.project, d.brief ? d.brief.content : ""); }
+    if (act === "skills") return openProjectSkillsModal(id, name);
+    if (act === "lifecycle") return openProjectLifecycleModal(id, name);
     if (act === "delete") {
       if (!confirm("Delete this project and its run history?")) return;
       await api(`/projects/${id}`, { method: "DELETE" });
@@ -293,14 +297,15 @@ function learningPanel(l) {
 
 // ---- Project detail ----
 views.projectDetail = async (id) => {
-  const [d, goal, lifecycle, artifacts, metrics, prompt, learning] = await Promise.all([
+  const [d, goal, lifecycle, artifacts, metrics, prompt, learning, projSkills] = await Promise.all([
     api(`/projects/${id}`),
     api(`/projects/${id}/goal`).catch(() => null),
     api(`/projects/${id}/lifecycle?take=8`).catch(() => []),
     api(`/projects/${id}/artifacts`).catch(() => []),
     api(`/projects/${id}/metrics?take=12`).catch(() => null),
     api(`/projects/${id}/prompt`).catch(() => null),
-    api(`/projects/${id}/learning`).catch(() => null)
+    api(`/projects/${id}/learning`).catch(() => null),
+    api(`/projects/${id}/skills`).catch(() => [])
   ]);
   const p = d.project;
   const latestMeta = (lifecycle && lifecycle[0]) || null;
@@ -310,6 +315,8 @@ views.projectDetail = async (id) => {
       <div>
         <button class="sm" data-act="run" data-id="${p.id}">Run now</button>
         <button class="sm" data-act="edit" data-id="${p.id}">Edit</button>
+        <button class="sm" data-act="skills" data-id="${p.id}" data-name="${esc(p.name)}">Edit skills</button>
+        <button class="sm" data-act="lifecycle" data-id="${p.id}" data-name="${esc(p.name)}">Edit lifecycle</button>
         <button class="sm danger" id="del">Delete</button>
       </div>
     </div>
@@ -358,6 +365,21 @@ views.projectDetail = async (id) => {
     </div>
     <div id="promptHistoryBox"></div>
 
+    <h2>Skills for this project</h2>
+    ${!projSkills || projSkills.length === 0 ? `<p class="muted">No skills in the global store.</p>` : `
+    <p class="muted">Skills default to <strong>on</strong> for every project. Toggling here only affects this project;
+       the global switch lives on the <a data-nav="skills">Skills</a> page.</p>
+    <table><thead><tr><th>Skill</th><th>Global</th><th>This project</th><th></th></tr></thead><tbody>
+      ${projSkills.map(s => `<tr>
+        <td><strong>${esc(s.name)}</strong> <span class="mono muted">$${esc(s.id)}</span>
+            ${s.description ? `<br><span class="muted">${esc(s.description)}</span>` : ""}</td>
+        <td>${s.enabledGlobal ? badge("on") : badge("off")}</td>
+        <td>${s.enabledForProject ? badge("on") : badge("off")}</td>
+        <td><button class="sm" data-proj-skill="${esc(s.id)}" data-skill-act="${s.disabledForProject ? "enable" : "disable"}">
+            ${s.disabledForProject ? "Enable" : "Disable"}</button></td>
+      </tr>`).join("")}
+    </tbody></table>`}
+
     <h2>Learning state</h2>
     ${learningPanel(learning)}
 
@@ -386,8 +408,16 @@ views.projectDetail = async (id) => {
     <h2>Recent runs</h2>
     ${runsTable(d.recentRuns)}
   `;
-  app.querySelectorAll("button[data-act]").forEach(b => b.onclick = () => projectAction(b.dataset.act, +b.dataset.id));
+  app.querySelectorAll("button[data-act]").forEach(b => b.onclick = () => projectAction(b.dataset.act, +b.dataset.id, b.dataset.name));
   app.querySelectorAll("a[data-run]").forEach(a => a.onclick = () => navigate("runDetail", +a.dataset.run));
+  app.querySelectorAll("a[data-nav]").forEach(a => a.onclick = () => navigate(a.dataset.nav));
+  app.querySelectorAll("button[data-proj-skill]").forEach(b => b.onclick = async () => {
+    try {
+      await api(`/projects/${id}/skills/${encodeURIComponent(b.dataset.projSkill)}/${b.dataset.skillAct}`, { method: "POST" });
+      toast("Skill updated for this project.");
+      render(id);
+    } catch (e) { toast(e.message, true); }
+  });
   $("#saveNotes").onclick = async () => {
     try { await api(`/projects/${id}`, { method: "PUT", body: JSON.stringify({ notes: $("#notes").value }) }); toast("Notes saved."); }
     catch (e) { toast(e.message, true); }
@@ -518,10 +548,12 @@ views.providers = async () => {
 
 // ---- Skills (global skill store) ----
 views.skills = async () => {
-  const [skills, log] = await Promise.all([api("/skills"), api("/skills/log")]);
+  const [skills, log, lifecycle] = await Promise.all([
+    api("/skills"), api("/skills/log"), api("/skills/lifecycle").catch(() => null)]);
   app.innerHTML = `
     <div class="toolbar"><h1>Skills</h1><button class="sm" id="reload">Reload from disk</button></div>
-    <p class="muted">Global skills shared across all projects. AutoDev auto-selects a skill when a task
+    <p class="muted">Global skills shared across all projects — the switch here turns a skill off everywhere.
+      Each project page has its own per-project toggles. AutoDev auto-selects a skill when a task
       matches its trigger keywords, and injects it explicitly into the run prompt.</p>
     ${skills.length === 0 ? `<p class="muted">No skills found. Check <span class="mono">AutoDevSkills/</span>.</p>` : `
     <table><thead><tr>
@@ -539,6 +571,23 @@ views.skills = async () => {
         </td>
       </tr>`).join("")}
     </tbody></table>`}
+    <h2>Skills per lifecycle stage</h2>
+    ${!lifecycle || lifecycle.skills.length === 0 ? `<p class="muted">No skills to map.</p>` : `
+    <p class="muted">Tick = the skill may be used while a run is in that stage (default: all on).
+      Stages consulted today: ${lifecycle.activeStages.map(s => `<strong>${esc(s)}</strong>`).join(", ")}
+      (<strong>Idea</strong> = suggesting the next task, <strong>Running</strong> = skills injected into the run prompt);
+      the rest are stored for future gates. A skill switched off globally or per-project stays off regardless.</p>
+    <div style="overflow-x:auto"><table><thead><tr>
+      <th>Skill</th>${lifecycle.stages.map(st => `<th title="${esc(st)}"${lifecycle.activeStages.includes(st) ? "" : ` class="muted"`}>${esc(st)}</th>`).join("")}
+    </tr></thead><tbody>
+      ${lifecycle.skills.map(s => `<tr>
+        <td><strong>${esc(s.name)}</strong> <span class="mono muted">$${esc(s.id)}</span>${s.enabledGlobal ? "" : ` <span class="muted">(off globally)</span>`}</td>
+        ${lifecycle.stages.map(st => `<td style="text-align:center">
+          <input type="checkbox" data-lc-skill="${esc(s.id)}" data-lc-stage="${esc(st)}" ${s.disabledStages.includes(st) ? "" : "checked"}>
+        </td>`).join("")}
+      </tr>`).join("")}
+    </tbody></table></div>`}
+
     <h2>Recent skill selections</h2>
     ${log.length === 0 ? `<p class="muted">No skill has been selected for a run yet.</p>` : `
     <table><thead><tr><th>When</th><th>Skill</th><th>Project</th><th>Matched keywords</th><th>Task</th></tr></thead><tbody>
@@ -558,6 +607,16 @@ views.skills = async () => {
   app.querySelectorAll("button[data-skill]").forEach(b => b.onclick = async () => {
     try { await api(`/skills/${encodeURIComponent(b.dataset.skill)}/${b.dataset.act}`, { method: "POST" }); toast("Updated."); render(); }
     catch (e) { toast(e.message, true); }
+  });
+  app.querySelectorAll("input[data-lc-skill]").forEach(cb => cb.onchange = async () => {
+    const act = cb.checked ? "enable" : "disable";
+    try {
+      await api(`/skills/lifecycle/${encodeURIComponent(cb.dataset.lcStage)}/${encodeURIComponent(cb.dataset.lcSkill)}/${act}`, { method: "POST" });
+      toast(`${cb.dataset.lcSkill} ${act}d for ${cb.dataset.lcStage}.`);
+    } catch (e) {
+      cb.checked = !cb.checked;
+      toast(e.message, true);
+    }
   });
 };
 
@@ -589,9 +648,88 @@ views.settings = async () => {
 
 // ---- Project modal ----
 const modal = $("#modal");
+
+// Reuse #modal as a lightweight instant-save editor: no Save button (changes
+// apply immediately), Cancel becomes Close. openProjectModal restores the
+// normal Save/Cancel pair.
+function openLightModal(title, onClose) {
+  $("#modal-title").textContent = title;
+  $("#modal-body").innerHTML = `<p class="muted">Loading…</p>`;
+  $("#modal-save").style.display = "none";
+  $("#modal-cancel").textContent = "Close";
+  $("#modal-cancel").onclick = () => {
+    modal.classList.add("hidden");
+    if (onClose) onClose();
+  };
+  modal.classList.remove("hidden");
+}
+
+function refreshAfterModal(projectId) {
+  return () => render(current === "projectDetail" ? projectId : undefined);
+}
+
+// Per-project skill editor ("Edit skills" button).
+async function openProjectSkillsModal(id, name) {
+  openLightModal(`Skills — ${name || "project #" + id}`, refreshAfterModal(id));
+  try {
+    const skills = await api(`/projects/${id}/skills`);
+    $("#modal-body").innerHTML = skills.length === 0
+      ? `<p class="muted">No skills in the global store.</p>`
+      : `<p class="muted">Tick = AutoDev may auto-select the skill for this project. Changes save immediately.</p>
+        ${skills.map(s => `
+        <div class="field row" style="margin-bottom:4px">
+          <input type="checkbox" data-ps-skill="${esc(s.id)}" ${s.disabledForProject ? "" : "checked"}>
+          <label>${esc(s.name)} <span class="mono muted">$${esc(s.id)}</span>${s.enabledGlobal ? "" : ` <span class="muted">(off globally)</span>`}</label>
+        </div>`).join("")}`;
+    $("#modal-body").querySelectorAll("input[data-ps-skill]").forEach(cb => cb.onchange = async () => {
+      const act = cb.checked ? "enable" : "disable";
+      try {
+        await api(`/projects/${id}/skills/${encodeURIComponent(cb.dataset.psSkill)}/${act}`, { method: "POST" });
+        toast(`${cb.dataset.psSkill} ${act}d for this project.`);
+      } catch (e) { cb.checked = !cb.checked; toast(e.message, true); }
+    });
+  } catch (e) { $("#modal-body").innerHTML = `<p class="muted">Error: ${esc(e.message)}</p>`; }
+}
+
+// Per-project lifecycle editor ("Edit lifecycle" button): which skills each
+// lifecycle stage may use in THIS project. Narrows the global lifecycle matrix.
+async function openProjectLifecycleModal(id, name) {
+  openLightModal(`Lifecycle skills — ${name || "project #" + id}`, refreshAfterModal(id));
+  try {
+    const lc = await api(`/projects/${id}/skills/lifecycle`);
+    if (!lc.skills.length) { $("#modal-body").innerHTML = `<p class="muted">No skills to map.</p>`; return; }
+    $("#modal-body").innerHTML = `
+      <p class="muted">Tick = the skill may be used in that stage <strong>for this project</strong> (default: all on).
+        Changes save immediately. Stages consulted today: ${lc.activeStages.map(s => `<strong>${esc(s)}</strong>`).join(", ")}.
+        Dimmed cells are switched off by the global lifecycle matrix (Skills page) and stay off regardless.</p>
+      <div style="overflow-x:auto"><table><thead><tr>
+        <th>Skill</th>${lc.stages.map(st => `<th${lc.activeStages.includes(st) ? "" : ` class="muted"`}>${esc(st)}</th>`).join("")}
+      </tr></thead><tbody>
+        ${lc.skills.map(s => `<tr>
+          <td><strong>${esc(s.name)}</strong> <span class="mono muted">$${esc(s.id)}</span>${s.enabledGlobal ? "" : ` <span class="muted">(off globally)</span>`}</td>
+          ${lc.stages.map(st => {
+            const globalOff = s.globalDisabledStages.includes(st);
+            return `<td style="text-align:center${globalOff ? ";opacity:.35" : ""}"${globalOff ? ` title="Off in the global lifecycle matrix"` : ""}>
+              <input type="checkbox" data-plc-skill="${esc(s.id)}" data-plc-stage="${esc(st)}" ${s.disabledStages.includes(st) ? "" : "checked"}>
+            </td>`;
+          }).join("")}
+        </tr>`).join("")}
+      </tbody></table></div>`;
+    $("#modal-body").querySelectorAll("input[data-plc-skill]").forEach(cb => cb.onchange = async () => {
+      const act = cb.checked ? "enable" : "disable";
+      try {
+        await api(`/projects/${id}/skills/lifecycle/${encodeURIComponent(cb.dataset.plcStage)}/${encodeURIComponent(cb.dataset.plcSkill)}/${act}`, { method: "POST" });
+        toast(`${cb.dataset.plcSkill} ${act}d for ${cb.dataset.plcStage}.`);
+      } catch (e) { cb.checked = !cb.checked; toast(e.message, true); }
+    });
+  } catch (e) { $("#modal-body").innerHTML = `<p class="muted">Error: ${esc(e.message)}</p>`; }
+}
+
 function openProjectModal(p, briefContent) {
   const isEdit = !!p;
   p = p || {};
+  $("#modal-save").style.display = "";
+  $("#modal-cancel").textContent = "Cancel";
   $("#modal-title").textContent = isEdit ? `Edit ${p.name}` : "New project";
   $("#modal-body").innerHTML = `
     <div class="field"><label>Name *</label><input type="text" id="f-name" value="${esc(p.name || "")}"></div>
@@ -624,6 +762,11 @@ function openProjectModal(p, briefContent) {
       <div id="f-prov-list" class="prov-list"></div>
       <div class="muted" style="font-size:11px">Tick a provider to allow it for this project; ↑/↓ sets the order tried (top = first).</div>
     </div>
+    <div class="field"><label>Skills</label>
+      <div id="f-skills"><span class="muted">Loading skills…</span></div>
+      <div class="muted" style="font-size:11px">Tick a skill to allow AutoDev to auto-select it for this project (default: all on).
+        The global off switch lives on the Skills page and wins over this.</div>
+    </div>
     <div class="field"><label>Validation command</label><input type="text" id="f-val" value="${esc(p.validationCommand || "")}" placeholder="dotnet build"></div>
     <div class="grid2">
       <div class="field row"><input type="checkbox" id="f-commit" ${p.autoCommit ?? true ? "checked" : ""}><label>Auto commit</label></div>
@@ -635,6 +778,7 @@ function openProjectModal(p, briefContent) {
   `;
   modal.classList.remove("hidden");
   const readProviderPriority = initProviderPriority(p.providerPriority || "Codex,Claude");
+  const readSkillChanges = initSkillToggles(isEdit ? p.id : null);
   $("#f-repo-browse").onclick = () => {
     const fb = $("#folder-browser");
     if (fb.classList.contains("hidden")) openFolderBrowser($("#f-repo").value.trim());
@@ -663,13 +807,50 @@ function openProjectModal(p, briefContent) {
     if (!body.name || !body.repoPath) { toast("Name and repo path are required.", true); return; }
     if (!body.providerPriority) { toast("Select at least one provider.", true); return; }
     try {
+      let projectId = p.id;
       if (isEdit) await api(`/projects/${p.id}`, { method: "PUT", body: JSON.stringify(body) });
-      else await api(`/projects`, { method: "POST", body: JSON.stringify(body) });
+      else projectId = (await api(`/projects`, { method: "POST", body: JSON.stringify(body) }))?.id;
+      if (projectId != null) {
+        for (const c of readSkillChanges())
+          await api(`/projects/${projectId}/skills/${encodeURIComponent(c.id)}/${c.enable ? "enable" : "disable"}`, { method: "POST" });
+      }
       modal.classList.add("hidden");
       toast("Saved.");
       render();
     } catch (e) { toast(e.message, true); }
   };
+}
+
+// ---- Per-project skill toggles inside the project modal ----
+// Checkbox = skill allowed for this project. Loads current state for an
+// existing project (or the global list with everything ticked for a new one);
+// on save only the CHANGED toggles are POSTed to enable/disable.
+function initSkillToggles(projectId) {
+  const box = $("#f-skills");
+  let rows = [];
+  (async () => {
+    try {
+      const skills = projectId != null
+        ? await api(`/projects/${projectId}/skills`)
+        : (await api(`/skills`)).map(s => ({ ...s, enabledGlobal: s.enabled, disabledForProject: false }));
+      rows = skills.map(s => ({
+        id: s.id, name: s.name, global: s.enabledGlobal,
+        wasDisabled: !!s.disabledForProject, disabled: !!s.disabledForProject
+      }));
+      if (rows.length === 0) { box.innerHTML = `<span class="muted">No skills in the global store.</span>`; return; }
+      box.innerHTML = rows.map((r, i) => `
+        <div class="field row" style="margin-bottom:4px">
+          <input type="checkbox" id="f-skill-${i}" data-skill-idx="${i}" ${r.disabled ? "" : "checked"}>
+          <label for="f-skill-${i}">${esc(r.name)} <span class="mono muted">$${esc(r.id)}</span>${r.global ? "" : ` <span class="muted">(off globally)</span>`}</label>
+        </div>`).join("");
+      box.querySelectorAll("input[data-skill-idx]").forEach(cb =>
+        cb.onchange = () => { rows[+cb.dataset.skillIdx].disabled = !cb.checked; });
+    } catch (e) {
+      rows = [];
+      box.innerHTML = `<span class="muted">Could not load skills: ${esc(e.message)}</span>`;
+    }
+  })();
+  return () => rows.filter(r => r.disabled !== r.wasDisabled).map(r => ({ id: r.id, enable: !r.disabled }));
 }
 
 // ---- Provider priority editor (checkbox = allowed, row order = try order) ----

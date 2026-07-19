@@ -104,10 +104,20 @@ using (var scope = app.Services.CreateScope())
     var orphaned = await db.Runs
         .Where(r => (r.Status == RunStatus.Running || r.Status == RunStatus.Pending) && r.FinishedAt == null)
         .ToListAsync();
-    var cleanedRuns = RunStartupCleanup.MarkOrphanedRuns(orphaned, reconciledAt);
 
+    // Dashboard and Task Scheduler runs live in separate processes over one DB,
+    // so THIS process starting proves nothing about other owners: probe each
+    // project's run.lock and only reclaim runs with no live owner (plus the
+    // watchdog grace so a run mid-startup is not misread as orphaned).
     var projects = await db.Projects.ToListAsync();
-    var cleanedProjects = RunStartupCleanup.ReconcileOrphanedProjects(projects, reconciledAt);
+    var runLock = scope.ServiceProvider.GetRequiredService<RunLock>();
+    var livenessById = projects.ToDictionary(p => p.Id, p => runLock.CheckLiveness(p));
+    Func<int, RunLockLiveness> livenessFor = projectId =>
+        livenessById.TryGetValue(projectId, out var liveness) ? liveness : RunLockLiveness.NotHeld;
+    var reclaimGrace = TimeSpan.FromMinutes(Math.Max(1, autoDevOptions.Watchdog.GraceMinutes));
+
+    var cleanedRuns = RunStartupCleanup.MarkOrphanedRuns(orphaned, reconciledAt, livenessFor, reclaimGrace);
+    var cleanedProjects = RunStartupCleanup.ReconcileOrphanedProjects(projects, reconciledAt, livenessFor, reclaimGrace);
     var sanitizedTasks = RunStartupCleanup.SanitizeResumeTasks(projects);
     var latestRunIds = await db.Runs
         .GroupBy(run => run.ProjectId)
@@ -115,7 +125,6 @@ using (var scope = app.Services.CreateScope())
         .ToListAsync();
     var latestRuns = await db.Runs.Where(run => latestRunIds.Contains(run.Id)).ToListAsync();
     var reconciledSnapshots = RunStartupCleanup.ReconcileLatestRunSnapshots(projects, latestRuns);
-    var runLock = scope.ServiceProvider.GetRequiredService<RunLock>();
     var recoveredLocks = projects.Count(project => runLock.TryRecoverDeadOwner(project, out _));
 
     if (cleanedRuns > 0 || cleanedProjects > 0 || reconciledSnapshots > 0

@@ -118,6 +118,17 @@ public record SkillDto(
     string InvocationHint,
     string SourcePath);
 
+/// <summary>A skill as seen from one project: global state plus the per-project toggle.</summary>
+public record ProjectSkillDto(
+    string Id,
+    string Name,
+    string Version,
+    string Description,
+    bool EnabledGlobal,
+    bool DisabledForProject,
+    bool EnabledForProject,
+    IReadOnlyList<string> Triggers);
+
 /// <summary>A logged skill-selection decision (which skill for which task).</summary>
 public record SkillSelectionDto(
     string SkillId,

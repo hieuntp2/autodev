@@ -613,7 +613,9 @@ public class RunOrchestrator
 
         var text = string.Join('\n', new[] { brief, project.Notes, project.CurrentTask, creativePlan }
             .Where(s => !string.IsNullOrWhiteSpace(s)));
-        var matches = _skills.Match(text);
+        // These skills go into the executor prompt, i.e. they are used while
+        // the run is in the Running stage — so that stage's toggles apply.
+        var matches = _skills.Match(text, project.Id, LifecycleStage.Running);
         if (matches.Count == 0)
             return matches;
 
