@@ -191,6 +191,7 @@ public static class ApiEndpoints
                 ProjectType = string.IsNullOrWhiteSpace(dto.ProjectType) ? null : dto.ProjectType!.Trim(),
                 Priority = dto.Priority ?? 0,
                 ProviderPriority = string.IsNullOrWhiteSpace(dto.ProviderPriority) ? "Codex,Claude" : dto.ProviderPriority!,
+                PlannerProvider = NormalizePlannerProvider(dto.PlannerProvider),
                 ValidationCommand = dto.ValidationCommand,
                 MaxRunMinutes = dto.MaxRunMinutes ?? 30,
                 AutoCommit = dto.AutoCommit ?? true,
@@ -224,6 +225,7 @@ public static class ApiEndpoints
             if (dto.Paused is not null) p.Paused = dto.Paused.Value;
             if (dto.Priority is not null) p.Priority = dto.Priority.Value;
             if (dto.ProviderPriority is not null) p.ProviderPriority = dto.ProviderPriority;
+            if (dto.PlannerProvider is not null) p.PlannerProvider = NormalizePlannerProvider(dto.PlannerProvider);
             if (dto.ValidationCommand is not null) p.ValidationCommand = dto.ValidationCommand;
             if (dto.MaxRunMinutes is not null) p.MaxRunMinutes = dto.MaxRunMinutes.Value;
             if (dto.AutoCommit is not null) p.AutoCommit = dto.AutoCommit.Value;
@@ -635,6 +637,17 @@ public static class ApiEndpoints
     private static PromptDirectiveVersionDto PromptDto(PromptDirective p) => new(
         p.Version, p.Author.ToString(), p.Note, p.CreatedAt, p.Content);
 
+    /// <summary>Canonicalize the plan-step AI choice; unknown tokens fall back to "" (global default).</summary>
+    private static string NormalizePlannerProvider(string? raw) =>
+        PlannerCallPolicy.ParseChoice(raw) switch
+        {
+            PlannerChoice.None => "None",
+            PlannerChoice.OpenAi => "OpenAI",
+            PlannerChoice.Codex => "Codex",
+            PlannerChoice.Claude => "Claude",
+            _ => string.Empty
+        };
+
     private static async Task<IResult> SetFlag(AppDbContext db, int id, Action<Project> mutate)
     {
         var p = await db.Projects.FirstOrDefaultAsync(x => x.Id == id);
@@ -658,7 +671,7 @@ public static class ApiEndpoints
         return new
         {
             p.Id, p.Name, p.RepoPath, p.BriefPath, p.ProjectType, p.Enabled, p.Paused, p.Priority,
-            p.ProviderPriority, p.ValidationCommand, p.MaxRunMinutes,
+            p.ProviderPriority, p.PlannerProvider, p.ValidationCommand, p.MaxRunMinutes,
             p.AutoCommit, p.AutoPush, p.AllowRunOnMainBranch, p.AllowAiEditBrief, p.AllowAiEditSettings, p.AiBranchPrefix,
             p.Notes, p.CurrentTask, p.LastSummary, p.CurrentBranch, p.ProviderSessionId,
             LastRunStatus = p.LastRunStatus?.ToString(),

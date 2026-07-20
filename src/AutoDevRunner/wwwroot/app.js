@@ -758,7 +758,17 @@ function openProjectModal(p, briefContent) {
       <div class="field"><label>Priority</label><input type="number" id="f-prio" value="${p.priority ?? 0}"></div>
       <div class="field"><label>Max run minutes</label><input type="number" id="f-max" value="${p.maxRunMinutes ?? 30}"></div>
     </div>
-    <div class="field"><label>Provider priority</label>
+    <div class="field"><label>Plan step — AI</label>
+      <select id="f-planner">
+        <option value="">Default (global Planner setting)</option>
+        <option value="OpenAI">OpenAI API (knowledge base)</option>
+        <option value="Codex">Codex CLI (local, plan-only)</option>
+        <option value="Claude">Claude CLI (local, plan-only)</option>
+        <option value="None">Off — heuristic backlog/ideas only</option>
+      </select>
+      <div class="muted" style="font-size:11px">Which AI plans the next task each run. Local CLIs read the repo instead of the knowledge base; a per-project choice overrides the global switch.</div>
+    </div>
+    <div class="field"><label>Execute step — provider priority</label>
       <div id="f-prov-list" class="prov-list"></div>
       <div class="muted" style="font-size:11px">Tick a provider to allow it for this project; ↑/↓ sets the order tried (top = first).</div>
     </div>
@@ -777,6 +787,7 @@ function openProjectModal(p, briefContent) {
     <div class="field"><label>Notes</label><textarea id="f-notes">${esc(p.notes || "")}</textarea></div>
   `;
   modal.classList.remove("hidden");
+  $("#f-planner").value = ["OpenAI", "Codex", "Claude", "None"].includes(p.plannerProvider) ? p.plannerProvider : "";
   const readProviderPriority = initProviderPriority(p.providerPriority || "Codex,Claude");
   const readSkillChanges = initSkillToggles(isEdit ? p.id : null);
   $("#f-repo-browse").onclick = () => {
@@ -795,6 +806,7 @@ function openProjectModal(p, briefContent) {
       priority: +$("#f-prio").value,
       maxRunMinutes: +$("#f-max").value,
       providerPriority: readProviderPriority(),
+      plannerProvider: $("#f-planner").value,
       validationCommand: $("#f-val").value.trim(),
       autoCommit: $("#f-commit").checked,
       autoPush: $("#f-push").checked,

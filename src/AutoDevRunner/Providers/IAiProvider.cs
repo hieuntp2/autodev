@@ -32,6 +32,8 @@ public interface IAiProvider
     /// <summary>
     /// Run the AI against the given prompt in <paramref name="workingDirectory"/>.
     /// Never throws for normal provider failures — those are reported via the outcome.
+    /// <paramref name="planMode"/> selects the provider's plan-only argument
+    /// template (PlanArguments) when one is configured.
     /// </summary>
     Task<ProviderInvocation> RunAsync(
         string prompt,
@@ -44,5 +46,6 @@ public interface IAiProvider
         TaskTier tier = TaskTier.Standard,
         bool modelRoutingEnabled = false,
         string? resumeSessionId = null,
-        bool resumeEnabled = false);
+        bool resumeEnabled = false,
+        bool planMode = false);
 }

@@ -23,6 +23,7 @@ public class RunOrchestrator
     private readonly GuardrailService _guard;
     private readonly PromptBuilder _promptBuilder;
     private readonly OpenAiCreativePlanner _planner;
+    private readonly CliCreativePlanner _cliPlanner;
     private readonly SummaryParser _summaryParser;
     private readonly EmailService _email;
     private readonly ProviderRegistry _providers;
@@ -74,6 +75,7 @@ public class RunOrchestrator
     public RunOrchestrator(
         AppDbContext db, GitService git, GuardrailService guard,
         PromptBuilder promptBuilder, OpenAiCreativePlanner planner,
+        CliCreativePlanner cliPlanner,
         SummaryParser summaryParser, EmailService email,
         ProviderRegistry providers, ProviderAvailability availability,
         ProcessRunner proc, RunLock runLock,
@@ -86,7 +88,7 @@ public class RunOrchestrator
         IOptions<AutoDevOptions> opt, ILogger<RunOrchestrator> log)
     {
         _db = db; _git = git; _guard = guard; _promptBuilder = promptBuilder;
-        _planner = planner; _summaryParser = summaryParser; _email = email;
+        _planner = planner; _cliPlanner = cliPlanner; _summaryParser = summaryParser; _email = email;
         _providers = providers; _availability = availability;
         _proc = proc; _lock = runLock; _skills = skills; _skillExporter = skillExporter;
         _goals = goals; _risk = risk; _artifacts = artifacts; _memory = memory;
@@ -207,14 +209,23 @@ public class RunOrchestrator
                             : "."));
             }
 
-            // 3b. Optional OpenAI creative planner (goal + KB grounded). Fail-soft.
-            //     When no task is in progress, it proposes the next small task.
+            // 3b. Optional creative planner (goal-grounded, fail-soft). Which AI runs
+            //     this PLAN step is chosen per project (PlannerProvider): the OpenAI
+            //     API, a local CLI (Codex/Claude) in plan-only mode, or none.
             string? creativePlan = null;
-            if (PlannerCallPolicy.ShouldCallPlanner(_opt.Planner, project))
+            var plannerChoice = PlannerCallPolicy.Resolve(_opt.Planner, project);
+            if (plannerChoice is not PlannerChoice.None)
             {
-                creativePlan = await _planner.CreatePlanAsync(project, brief, goal, ct);
+                Log($"Plan step: using {plannerChoice} planner.");
+                creativePlan = plannerChoice switch
+                {
+                    PlannerChoice.OpenAi => await _planner.CreatePlanAsync(project, brief, goal, ct),
+                    PlannerChoice.Codex => await _cliPlanner.CreatePlanAsync(ProviderKind.Codex, project, brief, goal, Log, ct),
+                    PlannerChoice.Claude => await _cliPlanner.CreatePlanAsync(ProviderKind.Claude, project, brief, goal, Log, ct),
+                    _ => null
+                };
             }
-            else if (_opt.Planner.Enabled)
+            else if (PlannerCallPolicy.ResolveConfigured(_opt.Planner, project) is not PlannerChoice.None)
             {
                 Log("Creative planner skipped: task already in progress and last run succeeded.");
             }

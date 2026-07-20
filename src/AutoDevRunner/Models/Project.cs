@@ -53,8 +53,16 @@ public class Project
     public int Priority { get; set; } = 0;
 
     // --- Provider selection ---
-    /// <summary>Comma-separated provider order, e.g. "Codex,Claude".</summary>
+    /// <summary>Comma-separated provider order for the EXECUTE step, e.g. "Codex,Claude".</summary>
     public string ProviderPriority { get; set; } = "Codex,Claude";
+
+    /// <summary>
+    /// Which AI plans the next task for this project (the PLAN step):
+    /// "" = global default (AutoDev:Planner:Enabled → OpenAI), "OpenAI" = OpenAI
+    /// Responses API, "Codex"/"Claude" = the local CLI in plan-only mode,
+    /// "None" = no AI planning (heuristic backlog/ideas fallback only).
+    /// </summary>
+    public string PlannerProvider { get; set; } = string.Empty;
 
     // --- Git / safety policy ---
     /// <summary>Prefix for the per-run AI branch. Run id is appended.</summary>

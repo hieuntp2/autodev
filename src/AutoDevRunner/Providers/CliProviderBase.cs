@@ -33,7 +33,8 @@ public abstract class CliProviderBase : IAiProvider
         TaskTier tier = TaskTier.Standard,
         bool modelRoutingEnabled = false,
         string? resumeSessionId = null,
-        bool resumeEnabled = false)
+        bool resumeEnabled = false,
+        bool planMode = false)
     {
         // Three ways to hand the prompt to the CLI, chosen by the args template:
         //   no placeholder -> stdin (default). No OS arg-length limit — required:
@@ -46,7 +47,9 @@ public abstract class CliProviderBase : IAiProvider
         string? stdin = null;
         string arguments;
 
-        var argumentTemplate = _options.ResolveArguments(tier, modelRoutingEnabled, resumeSessionId, resumeEnabled);
+        var argumentTemplate = planMode && !string.IsNullOrWhiteSpace(_options.PlanArguments)
+            ? _options.PlanArguments
+            : _options.ResolveArguments(tier, modelRoutingEnabled, resumeSessionId, resumeEnabled);
 
         if (argumentTemplate.Contains("{PROMPT_FILE}"))
         {

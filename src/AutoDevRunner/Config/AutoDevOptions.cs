@@ -269,6 +269,13 @@ public class PlannerOptions
 
     /// <summary>Responses API endpoint. Override for Azure/proxy setups.</summary>
     public string ApiUrl { get; set; } = "https://api.openai.com/v1/responses";
+
+    /// <summary>
+    /// Hard time cap for a PLAN-step call made through a local CLI provider
+    /// (project PlannerProvider = Codex/Claude). Planning is a read-only,
+    /// single-answer call, so this is much shorter than a run's MaxRunMinutes.
+    /// </summary>
+    public int CliTimeoutMinutes { get; set; } = 15;
 }
 
 public class SchedulerOptions
@@ -298,6 +305,14 @@ public class ProviderCliOptions
     public Dictionary<string, string> Tiers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public string ResumeArguments { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional argument template used for PLAN-step invocations (project
+    /// PlannerProvider = this CLI). Point it at the CLI's read-only/plan mode
+    /// (e.g. claude "--permission-mode plan"). Empty = fall back to
+    /// <see cref="Arguments"/> with prompt-level guardrails only.
+    /// </summary>
+    public string PlanArguments { get; set; } = string.Empty;
 
     public string ResolveArguments(Services.TaskTier tier, bool modelRoutingEnabled,
         string? resumeSessionId = null, bool resumeEnabled = false)
